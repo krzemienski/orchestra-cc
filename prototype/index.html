@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orchestra Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Orchestra</h1>
+      <p class="tagline">A conductor and its musicians, inside Claude Code. Design prototype playing a scripted performance.</p>
+    </div>
+    <p class="task" id="task"></p>
+    <div class="transport" role="group" aria-label="Playback">
+      <button type="button" id="btn-restart" title="Restart">Restart</button>
+      <button type="button" id="btn-back" title="Step back one event (Left arrow)">Step back</button>
+      <button type="button" id="btn-play" class="primary" title="Play or pause (Space)">Play</button>
+      <button type="button" id="btn-fwd" title="Step forward one event (Right arrow)">Step</button>
+      <label class="speed">Speed
+        <select id="speed">
+          <option value="0.5">Slow</option>
+          <option value="1" selected>Normal</option>
+          <option value="2">Fast</option>
+          <option value="4">Very fast</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="show-sites"> Show where each part lives in Claude Code</label>
+    </div>
+    <div class="scrub">
+      <input type="range" id="scrub" min="0" value="0" aria-label="Timeline position">
+      <span id="scrub-readout" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <main class="board">
+    <section class="term-wrap" aria-label="Claude Code terminal running the Orchestra mod">
+      <div class="terminal" id="terminal">
+        <div class="term-titlebar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>claude · ~/harbor-api</span></div>
+        <div class="term-body">
+          <div class="transcript-col site" data-site="Transcript · tool rows redrawn via ui.render ToolUse, log lines via the mod">
+            <div class="transcript" id="transcript" aria-live="off"></div>
+            <div class="toasts site" id="toasts" aria-live="polite" data-site="Toasts · $.ui.toast"></div>
+          </div>
+          <aside class="pane site" id="pane" data-site="Pane · $.ui.open, drawn in ui.render {component: 'Pane'}">
+            <div class="pane-tabs" role="tablist" id="pane-tabs"></div>
+            <div class="pane-body" id="pane-body"></div>
+          </aside>
+        </div>
+        <div class="spinner site" id="spinner" data-site="Spinner · redrawn via ui.render Spinner"></div>
+        <div class="band site" id="band" data-site="Band · ui.render {component: 'AbovePrompt'}"></div>
+        <div class="prompt-area" id="prompt-area"></div>
+        <div class="statusline site" id="statusline" data-site="Status line · $.ui.status"></div>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="Inspector">
+      <h2>Inspector</h2>
+      <div id="inspector"></div>
+      <h3>Latest ledger entry</h3>
+      <p class="hint">Each event is appended to <span class="path">.orchestra/ledger.jsonl</span>. Every view on this page is folded from that log, so scrubbing the timeline replays it.</p>
+      <pre class="ledger" id="ledger"></pre>
+      <h3>Why it looks like this</h3>
+      <ul class="why">
+        <li>Mods can draw a pane, a band above the prompt, toasts, a status line, and can redraw tool rows and the spinner. Orchestra uses only those places. <a href="https://code.claude.com/docs/en/plugins/mods/interface" target="_blank" rel="noopener">Mods interface docs</a></li>
+        <li>Subagents return only a final message to the conductor, so Orchestra records reads and writes per agent from tool events instead of trusting summaries. <a href="https://code.claude.com/docs/en/sub-agents" target="_blank" rel="noopener">Subagents docs</a></li>
+        <li>Conflicts and stale reads are derived from which version each musician read before writing, not declared by the agents.</li>
+        <li>The conductor asks you through the question dialog, the same place Claude Code asks questions.</li>
+      </ul>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

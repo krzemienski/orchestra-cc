@@ -1,0 +1,4 @@
+{
+  "description": "Orchestra: records each musician's reads and writes, guards stale writes, and draws the ensemble",
+  "modules": ["./register.js"]
+}

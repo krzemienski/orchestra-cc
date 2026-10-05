@@ -1,0 +1,122 @@
+# Orchestra
+
+A conductor agent and its musicians, inside Claude Code.
+
+Orchestra is a Claude Code plugin. A **conductor** agent plans the work as a score, assigns parts to five **musician** subagents, runs independent parts in parallel, and presents a **coda** at the end. A Claude Code **mod** that ships in the same plugin watches the whole performance. It records every file each musician reads and writes into an append-only ledger with SHA-256 versions. It holds a write that would overwrite another musician's newer work and asks you what to do. It draws the ensemble beside your transcript.
+
+| Musician | Subagent type | Role |
+| --- | --- | --- |
+| Violin | `orchestra:violin` | Scout: maps code, writes notes, never edits source |
+| Trumpet | `orchestra:trumpet` | Implementer: changes source code |
+| Flute | `orchestra:flute` | Scribe: writes documentation |
+| Timpani | `orchestra:timpani` | Tester: runs tests and commands, saves logs |
+| Cello | `orchestra:cello` | Reviewer: reports problems, never edits |
+
+## Install
+
+Requires Claude Code **2.1.287 or later**, the version that added mods. Tested with **2.1.289**. Mods must be allowed on your machine: they are on by default, but managed settings such as `allowManagedModsOnly`, or `--bare` and `--safe-mode`, turn them off.
+
+```sh
+claude plugin marketplace add krzemienski/orchestra-cc
+claude plugin install orchestra@orchestra-cc
+```
+
+To try it without installing, clone this repository and load the plugin directory for one session:
+
+```sh
+git clone https://github.com/krzemienski/orchestra-cc
+claude --plugin-dir ./orchestra-cc/plugin --agent orchestra:conductor
+```
+
+## Use
+
+Start a session with the conductor as the main agent, then describe the work:
+
+```sh
+claude --agent orchestra:conductor
+```
+
+Installing the plugin does not change your other sessions' main agent. The mod records any session where subagents run, but the conductor only conducts when you start it.
+
+| Command | What it does |
+| --- | --- |
+| `/orchestra` | Opens the Orchestra pane (tabs: Ensemble, Score, Artifacts, Coda). Esc closes it. Keys 1–4 switch tabs. |
+| `/orchestra coda` | Prints the coda for this session from the ledger |
+| `/orchestra ledger` | Prints the ledger's path, event count and status |
+| `/orchestra close` | Closes the pane |
+
+## What you see
+
+- **The band above the prompt** lists every musician with a state glyph and the measures played so far:
+  - `♪` playing, `‖` waiting on you, `✓` done, `✕` failed.
+  - One measure is one completed tool call.
+  - The tool a musician is running right now is shown beside it.
+  - Open conflicts and stale reads are flagged.
+- **The pane** (beside the transcript in a wide terminal, above the prompt in a narrow one):
+  - **Ensemble**: every musician's role, state, current activity and read and write counts. Select one to see its part, the version of every file it has seen, and its answer.
+  - **Score**: one staff per musician, newest events on the right. `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
+  - **Artifacts**: every file touched, with its versions. Select one to see each version's author, base version, line delta and SHA-256, who read which version, and its conflicts.
+  - **Coda**: who contributed what, artifacts changed, handoffs, conflicts, failures and stale reads, all computed from the ledger.
+- **The status line** under the prompt, for example `Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 conflict`.
+- **Toasts** for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
+- **The spinner** gains `· 2 musicians playing`.
+- **Agent tool rows** are labelled with the instrument, its role, its state and its measures. When several parts start in one message, Claude Code draws a single summary row that a mod cannot redraw, so those parts are not labelled there.
+
+## Data model
+
+Everything Orchestra shows is folded from one append-only ledger per session in `.orchestra/performances/` in your project, written in segments of 500 events (`<session-id>.0001.jsonl`, …) so a crash can lose at most part of the newest segment. Orchestra also writes `.orchestra/.gitignore` so none of it is committed by accident.
+
+Only observations are recorded:
+
+| Event | Recorded when |
+| --- | --- |
+| `part.assigned` | The conductor's Agent call started a subagent. Carries the subagent's id, type, description and prompt. |
+| `tool.call`, `tool.result` | A musician called a tool, and how it ended |
+| `artifact.read` | A musician read a file. Carries the file's SHA-256 at that moment. |
+| `write.attempt` | A write is about to run. Carries the SHA-256 of the file it is about to change. |
+| `artifact.write` | The write landed. Carries the new SHA-256 and lines added and removed. |
+| `conflict.resolved` | Your decision on a conflict |
+| `part.done`, `part.failed` | The subagent's turn ended |
+| `coda` | The coda file was written |
+
+Everything else is **derived** from versions, never declared by the agents:
+
+- **Conflict**: a musician tries to write a file whose current version is not the one it last saw. Example: Trumpet read v0, Trumpet 2 wrote v1, and Trumpet now edits from v0. Orchestra holds the write and asks in Claude Code's own question dialog: *Let it write*, *Send it back to re-read*, or *Show both versions*, which draws the lines the other musician added and the held change directly above the question before asking again. Sending it back denies the edit and tells the musician to re-read and reapply its change. In a `claude -p` run nobody can answer, so the write is sent back.
+- **Stale read**: a musician produced other work after reading a version that someone has since replaced. It clears when that musician reads the current version.
+- **Handoff**: a musician read a version that another musician wrote.
+- **Coda**: written to `.orchestra/performances/<session-id>-coda.md` at the end of each conductor turn, from the ledger alone.
+
+## Interactive prototype
+
+`prototype/` is the approved design prototype: a scripted performance played on HTML stand-ins for the surfaces a mod can draw. Run it with:
+
+```sh
+cd prototype && python3 -m http.server 8742 --bind 127.0.0.1
+# open http://127.0.0.1:8742/index.html
+```
+
+Its data is illustrative. The plugin in `plugin/` is the real integration.
+
+## Research
+
+- `docs/orchestra-research-report.md` covers Claude Code plugins, mods and modes; prior art; OpenCode, Pi and terminal UX with visual evidence; data-operation patterns; and open questions. Every claim is labelled and linked.
+- `docs/orchestra-prototype-design.md` gives the design rationale for the prototype.
+- `docs/orchestra-prd.md` is the product requirements document: every screen with wireframes, colours, data placement and keyboard access.
+- `docs/orchestra-spec.md` is the engineering specification: event flow, derivation rules and the verification plan.
+- `docs/verification.md` records how the plugin was verified in a real environment, screen by screen.
+
+## Limitations
+
+- Mod drawing appears only in the Claude Code terminal and the Desktop app's Code tab. In the VS Code extension, `claude -p` and cloud sessions, the ledger, conflict guard and coda still work, but nothing is drawn.
+- A change a musician makes with Bash (for example `sed -i`) to a file Orchestra already tracks is credited to that musician, marked "via Bash", and marked uncertain if another musician had a tool running at the same time. Files created by Bash are not recorded, so the musicians are told to create files with Write and Edit.
+- A command that hides its own exit code (for example `npm test; echo $?`) is recorded as a success. The tester and conductor are instructed never to append anything to a command, but a model can still ignore that.
+- If one of Orchestra's own hooks fails, Claude Code skips it and the tool runs anyway (fail open), so Orchestra can never block your work. `claude plugin validate` reports this as `gating hook without .catch: tool.call`.
+- Progress is counted in measures (completed tool calls), not as a fraction of a known total, because Claude Code exposes no step plan for a subagent.
+- Hot reload of the mod waits until the current turn ends. After a reload, or after `claude --continue`, the session's ledger is replayed, so the picture is rebuilt rather than lost.
+- Colours follow your Claude Code theme (dark, light or ANSI) within 2 seconds of a change. On a 256-colour terminal the hex colours are approximated.
+- The mods API is new: it was added in 2.1.287, and the events and methods may change between releases. This version was tested against 2.1.289.
+- Agent teams (split-pane teammates in separate processes) were not tested.
+
+## License
+
+MIT

@@ -1,0 +1,12 @@
+{
+  "name": "orchestra-cc",
+  "description": "Orchestra: a conductor agent and musician subagents for Claude Code, with a live ledger of who read and changed what",
+  "owner": { "name": "krzemienski" },
+  "plugins": [
+    {
+      "name": "orchestra",
+      "source": "./plugin",
+      "description": "Conductor and musician subagents, plus a mod that records every read and write, guards stale writes, and draws the ensemble"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+.orchestra/
+spikes/
+plans/
+e2e-evidence/
+.claude-plugin/types/
+plugin/.claude-plugin/types/
+.DS_Store
+node_modules/
+.mcp.json
+.omc/

@@ -1,7 +1,7 @@
 # Orchestra — Stage 3 specification
 
-Status: draft for the user's review, 2026-10-05. Reasoning trail: `plans/261005-1726-orchestra/thinking/transcript.json` (24 steps through the sequential-thinking MCP server).
-Inputs: the original three-stage prompt; `docs/orchestra-research-report.md` (Stage 1); `prototype/` and `docs/orchestra-prototype-design.md` (Stage 2, approved "approved, publish public as orchestra-cc"); the Claude Code 2.1.289 mods docs and type declarations in `plans/261005-1726-orchestra/acquired/`.
+Status: draft for the user's review, 2026-10-05. Reasoning trail: 24 steps through the sequential-thinking MCP server, kept in the author's local working notes (not published).
+Inputs: the original three-stage prompt; `docs/orchestra-research-report.md` (Stage 1); `prototype/` and `docs/orchestra-prototype-design.md` (Stage 2, approved "approved, publish public as orchestra-cc"); the Claude Code 2.1.289 mods docs and the type declarations that Claude Code generates for a mod (local copies, not published).
 
 **Current status: `docs/verification.md` is the authoritative record of what was verified on 2026-10-05; the status column and defect table here are kept as the pre-implementation snapshot, with defects 1–9 resolved as listed in `docs/verification.md`.**
 
@@ -108,7 +108,7 @@ Every event has `seq` (1, 2, 3 … per session), `ts` (epoch milliseconds) and `
 3. **The conductor writes the score** (its own Write: recorded as `tool.call`, `write.attempt`, `artifact.write` with agent `conductor`).
 4. **The conductor starts parts.** Each Agent call → `agent.spawn` resolves → `part.assigned`. The first one opens the pane (when the terminal is wide enough; otherwise it waits until `/orchestra`).
 5. **Musicians work in parallel.** Every tool call → `tool.call`. A Read → `artifact.read` with the hash. Each event updates the band, status line and pane.
-6. **A write is attempted.** The mod hashes the file, records `write.attempt`, and derives a conflict if one exists. If so it **holds the write** and asks in Claude Code's question dialog. If the person chooses *Let it write*, the write proceeds. If they choose *Send it back to re-read*, or nobody can answer (`-p` run, dialog dismissed), the write is denied with a message telling the musician to re-read and reapply.
+6. **A write is attempted.** The mod hashes the file, records `write.attempt`, and derives a conflict if one exists. If the writer never read the file, the write is denied without a question: Claude Code refuses any Write or Edit of a file that loop has not read, and a mod cannot record the read for it, so asking would offer a choice that always fails. Otherwise the mod **holds the write** and asks in Claude Code's question dialog. If the person chooses *Let it write*, the write proceeds. If they choose *Send it back to re-read*, or nobody can answer (`-p` run, dialog dismissed), the write is denied with a message telling the musician to re-read and reapply.
 7. **The write lands.** The mod hashes the result → `artifact.write`, a new version, and stale-read derivation for other musicians.
 8. **A musician finishes.** → `part.done` or `part.failed`.
 9. **The conductor's turn ends.** → `turn.end`, then the coda file is written and a `coda` event recorded. If every musician is done or failed, a coda line is logged in the transcript and a "coda ready" toast shown.
@@ -119,19 +119,19 @@ All drawing happens only where a mod may draw (mods interface docs). Status mark
 
 | Surface | Content and exact format | Updates when | Keys | Status |
 | --- | --- | --- | --- | --- |
-| Band above the prompt | `𝄐 Orchestra  Trumpet ♪ 3 Edit  Trumpet 2 ✓ 4  ‼ 1 conflict  ⚠ 1 stale` — each musician: name in its colour, glyph (`♪` playing, `‖` waiting, `✓` done, `✕` failed), measures, current tool | Every recorded event (redraws throttled by Claude Code to 30/s) | — | Drawn live (`e2e-evidence/stage3-interactive-20261005-181339/04-after-send-back.txt`), but with wrong names (§9, defect 1). Correct names UNVERIFIED. |
+| Band above the prompt | `𝄐 Orchestra  Trumpet ♪ 3 Edit  Trumpet 2 ✓ 4  ‼ 1 conflict  ⚠ 1 stale` — each musician: name in its colour, glyph (`♪` playing, `‖` waiting, `✓` done, `✕` failed), measures, current tool | Every recorded event (redraws throttled by Claude Code to 30/s) | — | Drawn live, but with wrong names (§9, defect 1). Correct names later VERIFIED: `docs/verification.md`, S1. |
 | Status line | `Orchestra · 2 playing · 1 waiting · 1 done · 2 artifacts changed · 1 conflict · 1 stale` (zero counts after `done` omitted) | Every event | — | Drawn live (same capture). |
-| Pane, Ensemble tab | Header `N playing in parallel · M done`; one block per roster member: name, role, glyph and state; current tool or part description; `n measures · r reads · w writes` and `⚠ stale read` if open. Selecting a name expands: type, part prompt, every file seen with its version and `(now vK)` if outdated, the musician's answer | Every event | `/orchestra` opens; `1` Ensemble; Enter on a name selects; Esc closes | Empty-state VERIFIED (`…/01-pane-empty-state.txt`); with a performance UNVERIFIED. |
+| Pane, Ensemble tab | Header `N playing in parallel · M done`; one block per roster member: name, role, glyph and state; current tool or part description; `n measures · r reads · w writes` and `⚠ stale read` if open. Selecting a name expands: type, part prompt, every file seen with its version and `(now vK)` if outdated, the musician's answer | Every event | `/orchestra` opens; `1` Ensemble; Enter on a name selects; Esc closes | Empty state VERIFIED before implementation; with a performance later VERIFIED: `docs/verification.md`, S3 and S4. |
 | Pane, Score tab | One staff per roster member, last (pane width − 12) events: `○` read, `←` read another's work, `●` write, `·` tool, `◆` assigned, `✓` done, `✕` failed, `‼` conflict, `⚠` stale, `?` decided | Every event | `2` | UNVERIFIED |
 | Pane, Artifacts tab | Every file touched, newest activity first: path, `vN` or `conflict`/`stale`, authors in order, read count. Selecting a file expands: each version (author, base, ±lines, first 12 hex of SHA-256, `skipped vK` if written from an older base), last 8 reads, conflicts and their outcome | Every event | `3`; Enter on a path | UNVERIFIED |
 | Pane, Coda tab | Task, coda file path, contributions, artifacts changed, handoffs, conflicts, failures, stale reads | Every event; file written at turn end | `4` | UNVERIFIED |
-| Conflict dialog | `Orchestra: <Other> changed <path> after <Writer> last saw it (<Writer> saw vB, it is now vC). Let <Writer>'s <Tool> go ahead?` with options *Let it write* / *Send it back to re-read* | A held write | ↑↓ Enter | VERIFIED with wrong names (`…/03-conflict-question.txt`); correct names UNVERIFIED. |
+| Conflict dialog | `Orchestra: <Other> wrote <path> vC and <Writer> saw vB. Let <Writer>'s <Tool> go ahead?` with options *Let it write* / *Send it back to re-read* / *Show both versions*. When the writer never read the file, no dialog: the write is sent back with the reason. | A held write the writer has read | ↑↓ Enter | Dialog VERIFIED: `docs/verification.md`, S9. The never-read case is specified; its verification is recorded with the fix. |
 | Toasts | `Orchestra · handoff: …` (4 s), `· stale read: …` (6 s), `· <name>: <tool> failed` (6 s), `· conflict on <path>: …` (8 s), `· coda ready: …` (6 s) | The event that created them | — | UNVERIFIED (not captured) |
 | Spinner | Claude Code's spinner plus `· N musicians playing` | While any musician plays | — | VERIFIED (`…/04-after-send-back.txt`: `Mustering… · 2 musicians playing`) |
 | Agent tool row | A line above Claude Code's row: `♪ Trumpet · Implementer · 3 measures` in the instrument colour | Agent row redraw | — | UNVERIFIED |
 | `/orchestra coda` | Status line, one line per contributor, each conflict, failure and stale read, handoff count, printed in the transcript | On command | — | UNVERIFIED |
 | `/orchestra ledger` | `<ledger path> · <n> events · <status line>` | On command | — | UNVERIFIED |
-| Coda file | Markdown: Task, Ledger path, Status, Who contributed what, Artifacts changed (with final SHA-256), Handoffs, Conflicts, Failures, Stale reads | End of each conductor turn | — | Written in both real runs (`spikes/harbor-*/.orchestra/performances/*-coda.md`), with defects 1–3. |
+| Coda file | Markdown: Task, Ledger path, Status, Who contributed what, Artifacts changed (with final SHA-256), Handoffs, Conflicts, Failures, Stale reads | End of each conductor turn | — | Written in both early real runs, with defects 1–3; later VERIFIED: `docs/verification.md`, "Coda matches the ledger". |
 
 ## 7. User journeys
 
@@ -184,7 +184,7 @@ These were applied in code before being explained to you. That broke the prompt'
 - Claude Code 2.1.289.
 - Runs use an isolated `CLAUDE_CONFIG_DIR` containing only Orchestra installed from GitHub (decision 2 in §12). Fallback: the normal config, with the user's other plugins' interference documented.
 - One fresh tmux session per journey, polled with short `capture-pane` calls.
-- Each capture is saved under `e2e-evidence/stage3-<journey>-<timestamp>/`.
+- Each capture is saved locally under `e2e-evidence/stage3-<journey>-<timestamp>/` (gitignored; the key outputs are quoted in `docs/verification.md`).
 - After each run, the session's ledger is replayed with `fold()` and the derived state compared with what the screen showed.
 
 | Requirement (prompt line) | Journey | Command | Pass condition |

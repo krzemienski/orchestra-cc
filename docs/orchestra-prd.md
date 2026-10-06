@@ -410,7 +410,8 @@ Stale reads
 
 **Choices and outcomes:**
 - **Let it write:** the write proceeds. The ledger records `conflict.resolved` with `choice: 'overwrite'`.
-- **Send it back to re-read:** the Edit is denied with: "Orchestra: <path> changed after you last read it (<other> wrote vC; you saw vB). Read the file again and reapply your change on top of its current content." The ledger records `choice: 'reread'`.
+- **Send it back to re-read:** the Edit is denied with: "Orchestra: <other> wrote <path> vC and you last saw vB. Read the file again and reapply your change on top of its current content." The ledger records `choice: 'reread'`.
+- **The writer never read the file:** no question is asked. Claude Code refuses a Write or Edit of any file that loop has not read, and a mod cannot record the read for it, so *Let it write* would fail every time. Orchestra records `choice: 'reread'` and denies the write with: "Orchestra: <other> wrote <path> vC and you never read it. Read the file, then reapply your change on top of its current content." The musician reads the file and reapplies, and that second write is the one that lands.
 - **Show both versions:** draws, directly above a second question with options 1 and 2, the lines the other musician added since the writer's version and the writer's proposed change, 3 lines each (Claude Code allows at most 12 rows around the dialog). The pane's Artifacts tab shows the same comparison while the write is held.
 - **Dismissed (Esc), or no one to ask (`claude -p`):** treated as *Send it back*.
 

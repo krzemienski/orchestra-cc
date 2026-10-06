@@ -239,7 +239,8 @@ const handlers = {
     // Stale work is redone when its product is rewritten by someone who has seen the current input.
     for (const s of state.stale) {
       if (s.cleared || !s.products.includes(e.path)) continue
-      if ((m.seen[s.path] ?? -1) >= s.currentV) {
+      const input = latest(ensureArtifact(state, s.path))
+      if (input && (m.seen[s.path] ?? -1) >= input.v) {
         s.cleared = true
         s.clearedSeq = e.seq
         s.clearedBy = e.agent
@@ -263,6 +264,16 @@ const handlers = {
       if (!products.length) continue
       if (state.stale.some((s) => s.agent === key && s.path === e.path && !s.cleared)) continue
       state.stale.push({ agent: key, path: e.path, readV, currentV: ver.v, writer: e.agent, products, seq: e.seq, cleared: false })
+    }
+    // The other order: this writer read an input, someone else changed it, and only now does
+    // the writer produce from the version they first saw. The check above never sees that,
+    // because it runs when the input changes, before the product exists.
+    for (const [input, readV] of Object.entries(m.seen)) {
+      if (input === e.path) continue
+      const cur = latest(state.artifacts[input])
+      if (!cur || readV >= cur.v) continue
+      if (state.stale.some((s) => s.agent === e.agent && s.path === input && !s.cleared)) continue
+      state.stale.push({ agent: e.agent, path: input, readV, currentV: cur.v, writer: cur.agent, products: [e.path], seq: e.seq, cleared: false })
     }
   },
   'part.done'(state, e) {

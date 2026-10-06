@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orchestra PRD — Visual Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-head: 'Instrument Serif', Georgia, serif;
+    --font-body: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+
+    --bg: #f3f5f9;
+    --surface: #ffffff;
+    --surface2: #eef1f7;
+    --border: rgba(20, 33, 61, 0.10);
+    --text: #14213d;
+    --text-dim: #55607a;
+    --accent: #1e3a5f;
+    --accent-dim: rgba(30, 58, 95, 0.07);
+    --gold: #9a6b06;
+    --gold-dim: rgba(212, 167, 58, 0.16);
+    --ok: #1d7a4f;
+    --ok-dim: rgba(29, 122, 79, 0.10);
+    --warn: #8a5a00;
+    --warn-dim: rgba(138, 90, 0, 0.10);
+    --danger: #b42318;
+    --danger-dim: rgba(180, 35, 24, 0.09);
+
+    --term-bg: #0c1018;
+    --term-line: #232f44;
+    --term-text: #dfe6f1;
+    --term-dim: #8592a8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220;
+      --surface: #121b2e;
+      --surface2: #17223a;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e6ebf5;
+      --text-dim: #9aa6bd;
+      --accent: #8fb3ff;
+      --accent-dim: rgba(143, 179, 255, 0.10);
+      --gold: #e3b955;
+      --gold-dim: rgba(227, 185, 85, 0.14);
+      --ok: #6bdc9a;
+      --ok-dim: rgba(107, 220, 154, 0.12);
+      --warn: #ffc65c;
+      --warn-dim: rgba(255, 198, 92, 0.12);
+      --danger: #ff7a7a;
+      --danger-dim: rgba(255, 122, 122, 0.12);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 40px;
+  }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .animate { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i, 0) * 0.05s); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  .wrap { max-width: 1320px; margin: 0 auto; display: grid; grid-template-columns: 180px 1fr; gap: 0 44px; }
+  .main { min-width: 0; }
+
+  /* TOC */
+  .toc { position: sticky; top: 24px; align-self: start; padding: 14px 0; grid-row: 1 / -1; max-height: calc(100dvh - 48px); overflow-y: auto; }
+  .toc-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .toc a { display: block; font-size: 13px; color: var(--text-dim); text-decoration: none; padding: 5px 10px; border-radius: 5px; border-left: 2px solid transparent; transition: all 0.15s; line-height: 1.35; margin-bottom: 1px; }
+  .toc a:hover { color: var(--text); background: var(--surface2); }
+  .toc a.active { color: var(--text); border-left-color: var(--gold); background: var(--surface); }
+
+  /* Hero */
+  .hero { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: 12px; padding: 36px 40px 32px; margin-bottom: 40px; box-shadow: 0 14px 40px rgba(20, 33, 61, 0.08); }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; }
+  h1 { font-family: var(--font-head); font-weight: 400; font-size: 54px; line-height: 1.05; letter-spacing: -0.5px; margin-bottom: 14px; }
+  .lead { font-size: 18px; line-height: 1.6; color: var(--text-dim); max-width: 860px; }
+  .lead strong { color: var(--text); font-weight: 600; }
+  .kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-top: 28px; }
+  .kpi { background: var(--surface2); border-radius: 10px; padding: 14px 16px; }
+  .kpi b { display: block; font-family: var(--font-head); font-weight: 400; font-size: 36px; line-height: 1; color: var(--accent); }
+  .kpi span { font-size: 13px; color: var(--text-dim); }
+
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin: 52px 0 18px; scroll-margin-top: 20px; }
+  .sec-head h2 { font-family: var(--font-head); font-weight: 400; font-size: 34px; letter-spacing: -0.3px; }
+  .sec-head .tag { font-size: 12px; font-weight: 600; color: var(--gold); background: var(--gold-dim); padding: 2px 8px; border-radius: 4px; }
+  .sec-intro { color: var(--text-dim); max-width: 860px; margin: -6px 0 20px; }
+  .sec-intro code, td code, .ve-card code, .callout code { font-family: var(--font-mono); font-size: 12.5px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+  .ve-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .ve-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .ve-card p, .ve-card li { font-size: 14px; color: var(--text-dim); }
+  .ve-card ul { padding-left: 18px; }
+  .ve-card--recessed { background: var(--surface2); }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+
+  /* Journey */
+  .journey { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; counter-reset: step; }
+  .journey .ve-card { position: relative; border-top: 3px solid var(--accent); padding-top: 22px; }
+  .journey .ve-card::before { counter-increment: step; content: counter(step); position: absolute; top: -14px; left: 16px; width: 26px; height: 26px; border-radius: 6px; background: var(--accent); color: var(--surface); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  thead th { position: sticky; top: 0; background: var(--surface2); text-align: left; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-dim); }
+  td:first-child { color: var(--text); font-weight: 500; }
+  tbody tr:nth-child(even) { background: var(--accent-dim); }
+  tbody tr:hover { background: var(--gold-dim); }
+  td small { display: block; font-size: 12.5px; color: var(--text-dim); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+  .st::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+  .st.v { color: var(--ok); background: var(--ok-dim); }
+  .st.p { color: var(--warn); background: var(--warn-dim); }
+  .st.u { color: var(--text-dim); background: var(--surface2); }
+  .st.n { color: var(--danger); background: var(--danger-dim); }
+
+  /* Screen map */
+  .screenmap { background: var(--term-bg); border: 1px solid var(--term-line); border-radius: 12px; padding: 14px; color: var(--term-text); font-size: 13px; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-rows: auto 260px auto auto auto auto; gap: 8px; }
+  .zone { border: 1.5px dashed rgba(227, 185, 85, 0.65); border-radius: 6px; padding: 8px 10px; position: relative; }
+  .zone .lbl { font-weight: 700; color: #e3b955; font-size: 12px; letter-spacing: 0.3px; }
+  .zone .what { color: var(--term-dim); font-size: 12.5px; }
+  .zone.cc { border-color: var(--term-line); border-style: solid; }
+  .zone.cc .lbl { color: var(--term-dim); }
+  .z-title { grid-column: 1 / -1; }
+  .z-trans { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 6px; }
+  .z-pane { grid-column: 2; grid-row: 2; }
+  .z-trans > .lbl { order: -2; }
+  .z-toast { order: -1; align-self: flex-end; width: 60%; background: #121926; }
+  .z-spin, .z-band, .z-dlg, .z-status { grid-column: 1 / -1; }
+
+  /* Wireframes */
+  .wf { background: var(--term-bg); color: var(--term-text); border: 1px solid var(--term-line); border-radius: 10px; overflow: hidden; }
+  .wf-head { display: flex; justify-content: space-between; gap: 12px; padding: 8px 14px; background: #121926; border-bottom: 1px solid var(--term-line); font-size: 12.5px; color: var(--term-dim); }
+  .wf-head b { color: #e3b955; font-weight: 600; }
+  .wf pre { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; padding: 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .c-cond { color: #c3a6ff; font-weight: 600; } .c-vio { color: #7eaaff; font-weight: 600; } .c-tru { color: #f2b950; font-weight: 600; }
+  .c-flu { color: #5fd3a8; font-weight: 600; } .c-tim { color: #ff8c6e; font-weight: 600; } .c-cel { color: #d78cff; font-weight: 600; }
+  .c-ok { color: #6bdc9a; } .c-warn { color: #ffc65c; } .c-dng { color: #ff6b6b; font-weight: 600; } .c-dim { color: var(--term-dim); }
+
+  /* Tokens */
+  .tokens { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .tok { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .tok-sw { display: grid; grid-template-columns: 1fr 1fr; height: 58px; }
+  .tok-sw div { display: flex; align-items: flex-end; padding: 6px 8px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+  .tok-body { padding: 10px 12px; }
+  .tok-body b { font-size: 14px; }
+  .tok-body p { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+  .tok-body .cr { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 500; }
+
+  /* Mermaid shell (from the visual-explainer template) */
+  .diagram-shell { position: relative; margin-bottom: 8px; }
+  .diagram-shell__hint { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+  .mermaid-wrap { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow: auto; display: flex; justify-content: center; align-items: center; min-height: 400px; cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+  .zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; z-index: 10; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .zoom-controls button { width: 28px; height: 28px; border: none; background: transparent; color: var(--text-dim); font-size: 14px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+  .zoom-controls button:hover { background: var(--border); color: var(--text); }
+  .mermaid-viewport { position: relative; overflow: hidden; width: 100%; height: 100%; min-height: 300px; }
+  .mermaid-canvas { position: absolute; top: 0; left: 0; }
+  .zoom-label { font-size: 11px; color: var(--text-dim); padding: 0 6px; white-space: nowrap; align-self: center; }
+  .mermaid .nodeLabel { font-family: var(--font-body) !important; font-size: 15px !important; }
+  .mermaid .edgeLabel { font-family: var(--font-body) !important; font-size: 13px !important; }
+
+  .callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--gold); border-radius: 0 10px 10px 0; padding: 14px 18px; font-size: 14px; color: var(--text-dim); margin-top: 16px; }
+  .callout strong { color: var(--text); }
+  .callout.danger { border-left-color: var(--danger); }
+
+  /* Delivery timeline */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before { content: ''; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: var(--border); }
+  .tl { position: relative; margin-bottom: 12px; }
+  .tl::before { content: ''; position: absolute; left: -24px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--text-dim); }
+  .tl.done::before { background: var(--ok); border-color: var(--ok); }
+  .tl.todo::before { border-color: var(--danger); }
+
+  .foot { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-dim); }
+
+  @media (max-width: 1100px) {
+    .journey { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 26px; }
+    .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 1000px) {
+    body { padding: 0 20px 40px; }
+    .wrap { grid-template-columns: 1fr; }
+    .toc { position: sticky; top: 0; z-index: 200; max-height: none; display: flex; gap: 4px; overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 20px; margin: 0 -20px 20px; grid-row: auto; }
+    .toc::-webkit-scrollbar { display: none; }
+    .toc-title { display: none; }
+    .toc a { white-space: nowrap; flex-shrink: 0; border-left: none; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 6px 10px; }
+    .toc a.active { border-bottom-color: var(--gold); }
+    .sec-head { scroll-margin-top: 60px; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .screenmap { grid-template-columns: 1fr; grid-template-rows: none; }
+    .z-trans, .z-pane { grid-column: 1; grid-row: auto; }
+    h1 { font-size: 38px; }
+  }
+  @media (max-width: 600px) {
+    .journey { grid-template-columns: 1fr 1fr; }
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .hero { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="toc" id="toc" aria-label="Sections">
+    <div class="toc-title">Contents</div>
+    <a href="#overview">Overview</a>
+    <a href="#journey">User journey</a>
+    <a href="#goals">Goals</a>
+    <a href="#arch">Architecture</a>
+    <a href="#flow">Event flow</a>
+    <a href="#map">Screen map</a>
+    <a href="#screens">Screens</a>
+    <a href="#wireframes">Wireframes</a>
+    <a href="#colours">Colours</a>
+    <a href="#data">Data model</a>
+    <a href="#access">Keyboard &amp; access</a>
+    <a href="#delivery">Delivery</a>
+    <a href="#open">Open items</a>
+  </nav>
+
+  <div class="main">
+
+    <section class="hero animate" id="overview" style="--i:0">
+      <div class="eyebrow">Product requirements v1.0 · plugin 0.1.1 · status as of 2026-10-06</div>
+      <h1>Orchestra, a conductor and its musicians inside Claude Code</h1>
+      <p class="lead">A Claude Code <strong>plugin</strong> with a conductor agent and five musician subagents, plus a <strong>mod</strong> that records every file each musician reads and writes into a per-session ledger with SHA-256 versions. The mod holds any write that would overwrite another musician's newer work and asks you, and draws the ensemble on the surfaces a mod may draw.</p>
+      <div class="kpis">
+        <div class="kpi"><b>11</b><span>screens specified</span></div>
+        <div class="kpi"><b>8</b><span>measurable goals</span></div>
+        <div class="kpi"><b>35</b><span>configuration rows</span></div>
+        <div class="kpi"><b>12</b><span>colour tokens, all ≥ 4.5:1</span></div>
+        <div class="kpi"><b>14</b><span>dated sources</span></div>
+      </div>
+    </section>
+
+    <div class="sec-head animate" id="journey" style="--i:1"><h2>What the user experiences</h2><span class="tag">PRD §1.1</span></div>
+    <div class="journey animate" style="--i:2">
+      <div class="ve-card"><h3>Install</h3><p><code>claude plugin install orchestra@orchestra-cc</code> from the public marketplace.</p></div>
+      <div class="ve-card"><h3>Start</h3><p><code>claude --agent orchestra:conductor</code>. The header shows the conductor.</p></div>
+      <div class="ve-card"><h3>Describe the task</h3><p>The conductor writes <code>.orchestra/score.md</code> and starts independent parts in one message, so they run in parallel.</p></div>
+      <div class="ve-card"><h3>Watch</h3><p>Band, status line and pane show who plays, each tool, measures, reads, writes, handoffs, stale reads and failures.</p></div>
+      <div class="ve-card"><h3>Decide conflicts</h3><p>A write on a version the writer never saw is held, and you are asked in Claude Code's question dialog.</p></div>
+      <div class="ve-card"><h3>Read the coda</h3><p>Written from the ledger at each conductor turn end: file, Coda tab and <code>/orchestra coda</code>.</p></div>
+    </div>
+
+    <div class="sec-head" id="goals"><h2>Goals and how each is measured</h2><span class="tag">PRD §1.3</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Goal</th><th>How it is measured</th><th>Evidence today</th></tr></thead>
+        <tbody>
+          <tr><td>G1 Musicians named by instrument</td><td>tmux capture shows instrument names in the band; zero <code>Guest</code> for <code>orchestra:*</code> types</td><td><span class="st v">Verified</span><small>0 <code>Guest</code> across 5 replayed ledgers</small></td></tr>
+          <tr><td>G2 Every read and write recorded with SHA-256</td><td>Count of successful Read/Write/Edit calls equals read+write events; final hash equals <code>shasum -a 256</code></td><td><span class="st v">Verified</span><small>First and latest hashes match <code>git show</code> and <code>shasum</code></small></td></tr>
+          <tr><td>G3 No stale-base write lands silently</td><td>1 of 1 scripted conflict raises the dialog or is denied; ledger has <code>conflict.resolved</code></td><td><span class="st v">Verified</span><small>Both choices, headless send-back, never-read send-back</small></td></tr>
+          <tr><td>G4 Coda matches the ledger</td><td>Coda tab, <code>/orchestra coda</code> and coda file show identical counts</td><td><span class="st v">Verified</span><small>Run 1</small></td></tr>
+          <tr><td>G5 Orchestra never blocks Claude Code</td><td>No hook over the 10 s budget; failures log to debug and the tool still runs</td><td><span class="st p">Partly</span><small>Fails open by design; hook times not measured</small></td></tr>
+          <tr><td>G6 Everything reachable by keyboard</td><td>Every tab, row and dialog option reachable with the keys in the access section</td><td><span class="st v">Verified</span><small>Keys 1–4, Tab, Enter, Esc</small></td></tr>
+          <tr><td>G7 State never by colour alone</td><td>Every coloured status also has a glyph and a word</td><td><span class="st v">Verified</span><small>Dark, light and ANSI themes; hex seen as 256-colour</small></td></tr>
+          <tr><td>G8 Installs from GitHub</td><td><code>marketplace add</code> and <code>plugin install</code> exit 0 in a clean config</td><td><span class="st p">Published</span><small>Install from GitHub not yet in the verification record</small></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sec-head" id="arch"><h2>System architecture</h2><span class="tag">PRD §3</span></div>
+    <p class="sec-intro">The conductor and musicians are ordinary Claude Code agents. Everything Orchestra observes comes through mod events, which carry each subagent's <code>agentId</code>; everything it shows is folded from one ledger file.</p>
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">Ctrl/Cmd + wheel to zoom. Drag to pan when zoomed. Double-click to fit.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading…</span>
+        </div>
+        <div class="mermaid-viewport"><div class="mermaid mermaid-canvas"></div></div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+flowchart TD
+  U(["User at the terminal"]) --> CC["Claude Code 2.1.289"]
+  CC -->|"--agent orchestra:conductor"| C["Conductor<br/>main loop"]
+  C -->|"Agent tool"| M["Musicians<br/>violin · trumpet · flute · timpani · cello"]
+  CC -->|"agent.spawn · tool.call<br/>turn.complete · ui.render"| MOD["Orchestra mod<br/>register.js"]
+  MOD --> L["ledger.js<br/>apply · fold · derive"]
+  MOD --> V["views.js<br/>element trees"]
+  MOD -->|"$.fs.write"| F[("Ledger .jsonl<br/>Coda .md")]
+  MOD -->|"$.ui.*"| S["Pane · Band · Status line<br/>Toasts · Spinner · Agent rows · Dialog"]
+  classDef mod fill:#d4a73a2e,stroke:#c99a2e
+  class MOD mod
+      </script>
+    </section>
+    <div class="grid3">
+      <div class="ve-card"><h3>Why a mod</h3><p>Only mod events attribute each tool call to a subagent, only a mod can hold a write and ask, and only a mod can draw a pane, band and status line.</p></div>
+      <div class="ve-card"><h3>Why not settings hooks</h3><p>They can record events, but they cannot draw or ask. They remain a possible fallback where mods are disabled.</p></div>
+      <div class="ve-card"><h3>Privacy</h3><p>No network calls. Stores prompts (≤500 chars), briefs (≤600), answers (≤1,200), paths and hashes. Never file contents. <code>.orchestra/.gitignore</code> is <code>*</code>.</p></div>
+    </div>
+
+    <div class="sec-head" id="flow"><h2>Event flow, from session start to coda</h2><span class="tag">Spec §5</span></div>
+    <section class="diagram-shell">
+      <p class="diagram-shell__hint">The conflict guard sits between the write attempt and the write itself.</p>
+      <div class="mermaid-wrap">
+        <div class="zoom-controls">
+          <button type="button" data-action="zoom-in" title="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" title="Zoom out">&minus;</button>
+          <button type="button" data-action="zoom-fit" title="Fit">&#8634;</button>
+          <button type="button" data-action="zoom-one" title="1:1">1:1</button>
+          <button type="button" data-action="zoom-expand" title="Open full size">&#x26F6;</button>
+          <span class="zoom-label">Loading…</span>
+        </div>
+        <div class="mermaid-viewport"><div class="mermaid mermaid-canvas"></div></div>
+      </div>
+      <script type="text/plain" class="diagram-source">
+flowchart TD
+  A["Session starts, you submit the task<br/>conductor writes score.md<br/>agent.spawn → part.assigned"] --> E["Musician tool.call"]
+  E --> F{"Write tool?"}
+  F -->|"no, Read"| G["artifact.read<br/>SHA-256 of the file"]
+  F -->|"yes"| H["write.attempt<br/>hash before the write"]
+  H --> I{"Writer saw the<br/>current version?"}
+  I -->|"yes"| J["Write runs<br/>artifact.write, new version"]
+  I -->|"no, saw an older one"| K["Conflict: write held<br/>question dialog"]
+  I -->|"no, never read it"| R
+  K -->|"Let it write"| Q{"File unchanged since<br/>the question?"}
+  Q -->|"yes"| J
+  Q -->|"no, ask again"| K
+  K -->|"Send it back, Esc, or -p"| R["Write denied with reason<br/>conflict.resolved reread"]
+  R -->|"musician re-reads"| E
+  J --> M["Derive stale reads<br/>for other musicians"]
+  G --> N["Derive handoff if another<br/>musician wrote that version"]
+  M --> O["turn.complete<br/>part.done or part.failed"]
+  N --> O
+  O --> P["Conductor turn ends<br/>coda file written from the ledger"]
+  classDef bad fill:#d9493f26,stroke:#d9493f
+  classDef good fill:#2f9e6a26,stroke:#2f9e6a
+  class K,R bad
+  class P good
+      </script>
+    </section>
+
+    <div class="sec-head" id="map"><h2>Where each screen lives in the terminal</h2><span class="tag">PRD §2</span></div>
+    <p class="sec-intro">Orchestra draws only at render sites a mod is allowed to use. Gold dashed outlines are Orchestra; solid grey is Claude Code's own.</p>
+    <div class="screenmap" aria-label="Map of a Claude Code terminal with Orchestra's surfaces">
+      <div class="zone cc z-title"><span class="lbl">Claude Code header</span> <span class="what">@orchestra:conductor · ~/project</span></div>
+      <div class="zone cc z-trans">
+        <span class="lbl">Transcript</span>
+        <div class="zone"><span class="lbl">S8 Agent row label</span><div class="what">♪ Trumpet · Implementer · 3 measures, above the stock Agent row</div></div>
+        <div class="zone"><span class="lbl">S8 Coda line</span><div class="what">Orchestra coda: … Written to .orchestra/performances/…-coda.md</div></div>
+        <div class="zone"><span class="lbl">S11 /orchestra coda · ledger</span><div class="what">Text output, the screen-reader path</div></div>
+        <div class="zone z-toast"><span class="lbl">S10 Toasts</span><div class="what">handoff · stale read · failure · conflict · coda ready</div></div>
+      </div>
+      <div class="zone z-pane"><span class="lbl">S3–S7 Orchestra pane</span><div class="what">1 Ensemble · 2 Score · 3 Artifacts · 4 Coda. Sidebar when wide (pane opened unasked needs 144 cols), framed region above the prompt when narrow.</div></div>
+      <div class="zone z-spin"><span class="lbl">S8 Spinner suffix</span> <span class="what">✻ Mustering… · 2 musicians playing</span></div>
+      <div class="zone z-band"><span class="lbl">S1 Band above the prompt</span> <span class="what">𝄐 Orchestra  Trumpet ♪ 3 Edit  Trumpet 2 ‖ 2  ‼ 1 conflict</span></div>
+      <div class="zone z-dlg"><span class="lbl">S9 Conflict dialog (Claude Code's AskUserQuestion)</span> <span class="what">Let it write · Send it back to re-read · Show both versions</span></div>
+      <div class="zone z-status"><span class="lbl">S2 Status line</span> <span class="what">⚠ orchestra: Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 conflict</span></div>
+    </div>
+
+    <div class="sec-head" id="screens"><h2>All eleven screens</h2><span class="tag">PRD §2.1–2.11</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Screen</th><th>Shows</th><th>Keys</th><th>Mods API</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>S1 Band</td><td>Roster: name in instrument colour, glyph, measures, current tool; alerts last</td><td>none (display only)</td><td><code>ui.render</code> AbovePrompt</td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S2 Status line</td><td>playing · waiting · done · failed · artifacts changed · conflict · stale</td><td>none</td><td><code>$.ui.status</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S3 Pane frame</td><td>Tab bar; empty state with how to start</td><td><code>/orchestra</code>, 1–4, Esc, Ctrl+X X</td><td><code>$.ui.open</code>, <code>ui.render</code> Pane</td><td><span class="st v">Verified</span><small>Framed region; sidebar untested</small></td></tr>
+          <tr><td>S4 Ensemble</td><td>Per musician: role, state, activity, measures, reads, writes, stale mark; detail on select</td><td>Tab, ↑↓, Enter</td><td><code>views.ensemble</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S5 Score</td><td>One staff per musician over the newest events; legend</td><td>1, 3, 4</td><td><code>views.score</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S6 Artifacts</td><td>Files by newest activity; versions with author, base, ±lines, SHA-256; readers; conflicts</td><td>Tab, ↑↓, Enter</td><td><code>views.artifacts</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S7 Coda tab</td><td>Task, contributions, artifacts, handoffs, conflicts, failures, stale reads</td><td>1, 2, 3</td><td><code>ledger.coda</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S8 Transcript rows</td><td>Agent label line, spinner suffix, coda log line</td><td>none</td><td><code>ui.render</code> ToolUse, Spinner; <code>$.ui.log</code></td><td><span class="st v">Verified</span><small>Parts started together share one unlabelled row</small></td></tr>
+          <tr><td>S9 Conflict dialog</td><td>Who changed what, versions seen and current; choices</td><td>↑↓ Enter, digits, Esc</td><td><code>tool.call</code> → <code>{ deny }</code>, <code>$.ui.ask</code></td><td><span class="st v">Verified</span></td></tr>
+          <tr><td>S10 Toasts</td><td>Handoff 4 s · stale 6 s · failure 6 s · conflict 8 s · coda ready 6 s</td><td>none</td><td><code>$.ui.toast</code></td><td><span class="st v">Verified</span><small>All five kinds</small></td></tr>
+          <tr><td>S11 Commands</td><td><code>/orchestra coda</code>, <code>ledger</code>, <code>close</code> as text</td><td>arguments</td><td><code>command.run</code></td><td><span class="st v">Verified</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sec-head" id="wireframes"><h2>Terminal wireframes</h2><span class="tag">PRD §2 layouts</span></div>
+    <p class="sec-intro">Rendered with the exact dark-theme token colours from the colour table. Every state also carries a glyph and a word.</p>
+    <div class="grid2">
+      <div class="wf">
+        <div class="wf-head"><b>S1 Band · S2 Status line</b><span>200 columns</span></div>
+<pre><span class="c-dim">𝄐 Orchestra</span>   <span class="c-vio">Violin</span> <span class="c-ok">✓</span> 4   <span class="c-tru">Trumpet</span> <span class="c-ok">♪</span> 3 Edit   <span class="c-tru">Trumpet 2</span> <span class="c-warn">‖</span> 2
+<span class="c-flu">Flute</span> <span class="c-ok">♪</span> 1 Read   <span class="c-tim">Timpani</span> <span class="c-dim">·</span> 0   <span class="c-dng">‼ 1 conflict</span>   <span class="c-warn">⚠ 1 stale</span>
+<span class="c-dim">────────────────────────────────────────────────</span>
+❯
+<span class="c-dim">────────────────────────────────────────────────</span>
+<span class="c-warn">⚠</span> orchestra: Orchestra · 2 playing · 1 waiting · 1 done
+  · 3 artifacts changed · 1 conflict · 1 stale</pre>
+      </div>
+      <div class="wf">
+        <div class="wf-head"><b>S9 Conflict dialog</b><span>header chip “Conflict”</span></div>
+<pre> ☐ Conflict
+│ Orchestra: <span class="c-tru">Trumpet 2</span> wrote config/limits.json v1 and
+│ <span class="c-tru">Trumpet</span> saw v0. Let Trumpet's Edit go ahead?
+<span class="c-ok">❯ 1. Let it write</span>
+  2. Send it back to re-read
+  3. Show both versions
+<span class="c-dim">Esc or a -p run counts as “Send it back”. A writer that
+never read the file is sent back with no question.</span></pre>
+      </div>
+      <div class="wf">
+        <div class="wf-head"><b>S4 Ensemble tab</b><span>pane sidebar, 56–80 cols</span></div>
+<pre>1: Ensemble   <span class="c-dim">2: Score   3: Artifacts   4: Coda</span>
+
+3 playing in parallel · 2 done
+
+<span class="c-cond">Conductor</span>  <span class="c-dim">Plans the score · ♪ playing</span>
+  <span class="c-dim">Coordinating the ensemble</span>
+<span class="c-tru">Trumpet</span>  <span class="c-dim">Implementer · ♪ playing</span>
+  <span class="c-dim">Edit config/limits.json</span>
+  3 measures · 2 reads · 1 writes   <span class="c-warn">⚠ stale read</span>
+<span class="c-tru">Trumpet 2</span>  <span class="c-dim">Implementer · ‖ waiting</span>
+  <span class="c-dim">Edit config/limits.json</span>
+  2 measures · 1 reads · 0 writes</pre>
+      </div>
+      <div class="wf">
+        <div class="wf-head"><b>S6 Artifacts, file selected</b><span>Enter on a path</span></div>
+<pre>config/limits.json      <span class="c-dng">conflict</span>
+  <span class="c-dim">written by Trumpet 2 → Trumpet · 5 reads</span>
+
+Versions:
+  v0 as first seen                <span class="c-dim">sha256:7554c7b9c1d2</span>
+  v1 by <span class="c-tru">Trumpet 2</span> from v0 +2 −1   <span class="c-dim">sha256:8c84199c6d45</span>
+  v2 by <span class="c-tru">Trumpet</span> from v1 +1 −1     <span class="c-dim">sha256:a5ea50206da1</span>
+Reads:
+  <span class="c-dim">Trumpet read v0 at event 22</span>
+  <span class="c-dim">Trumpet read v1 at event 51</span>
+Conflicts:
+  <span class="c-ok">✓</span> Trumpet wrote from v0 over Trumpet 2's v1 · reread</pre>
+      </div>
+      <div class="wf">
+        <div class="wf-head"><b>S5 Score tab</b><span>newest events on the right</span></div>
+<pre><span class="c-dim">Events 41–96 of the ledger</span>
+<span class="c-cond">Conductor</span>  ◆  ◆      ◆               <span class="c-warn">?</span>     𝄐
+<span class="c-vio">Violin</span>       ·○·○●<span class="c-ok">✓</span>
+<span class="c-tru">Trumpet</span>         ·○ ·  ·<span class="c-dng">‼</span>     ←·●<span class="c-ok">✓</span>
+<span class="c-tru">Trumpet 2</span>         ·○·●<span class="c-ok">✓</span>
+<span class="c-tim">Timpani</span>                   ←·<span class="c-dng">✕</span>     ←·<span class="c-ok">✓</span>
+
+<span class="c-dim">○ read  ← read another's work  ● write  ◆ assigned
+✓ done  ✕ failed  ‼ conflict  ⚠ stale  ? you decided</span></pre>
+      </div>
+      <div class="wf">
+        <div class="wf-head"><b>S8 Transcript rows</b><span>Agent label · spinner · coda line</span></div>
+<pre><span class="c-tru">♪ Trumpet · Implementer · 3 measures</span>
+⏺ orchestra:trumpet(Trumpet A: perMinute 60)
+  ⎿  Done (6 tool uses · 12.4k tokens · 51s)
+
+<span class="c-warn">✻ Mustering… · 2 musicians playing</span>
+
+⏺ Orchestra coda: Orchestra · 0 playing · 5 done
+  · 2 artifacts changed. Written to
+  .orchestra/performances/…-coda.md</pre>
+      </div>
+    </div>
+
+    <div class="sec-head" id="colours"><h2>Colour tokens and where each is used</h2><span class="tag">PRD §6.4</span></div>
+    <p class="sec-intro">Each swatch shows the dark value (left) and light value (right). Contrast is WCAG against <code>#0c1018</code> and <code>#ffffff</code>, computed 2026-10-05. Muted and body text inherit Claude Code's own <code>dimColor</code> and foreground.</p>
+    <div class="tokens">
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#c3a6ff">#c3a6ff</div><div style="background:#fff;color:#6b3fd4">#6b3fd4</div></div><div class="tok-body"><b>conductor</b><p>Conductor name, staff, Agent label. Agent panel: cyan.</p><p class="cr">9.27 / 6.39</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#7eaaff">#7eaaff</div><div style="background:#fff;color:#2457d6">#2457d6</div></div><div class="tok-body"><b>violin</b><p>Strings. Agent panel: blue.</p><p class="cr">8.23 / 6.16</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#f2b950">#f2b950</div><div style="background:#fff;color:#8a5a00">#8a5a00</div></div><div class="tok-body"><b>trumpet</b><p>Brass. Agent panel: yellow.</p><p class="cr">10.73 / 5.93</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#5fd3a8">#5fd3a8</div><div style="background:#fff;color:#1d7a4f">#1d7a4f</div></div><div class="tok-body"><b>flute</b><p>Woodwinds. Agent panel: green.</p><p class="cr">10.31 / 5.32</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#ff8c6e">#ff8c6e</div><div style="background:#fff;color:#b4441e">#b4441e</div></div><div class="tok-body"><b>timpani</b><p>Percussion. Agent panel: red.</p><p class="cr">8.37 / 5.55</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#d78cff">#d78cff</div><div style="background:#fff;color:#8a2fb4">#8a2fb4</div></div><div class="tok-body"><b>cello</b><p>Low strings. Agent panel: purple.</p><p class="cr">8.24 / 6.67</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#6bdc9a">#6bdc9a</div><div style="background:#fff;color:#1d7a4f">#1d7a4f</div></div><div class="tok-body"><b>ok</b><p>✓ on the Score, resolved conflicts.</p><p class="cr">11.18 / 5.32</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#ffc65c">#ffc65c</div><div style="background:#fff;color:#8a5a00">#8a5a00</div></div><div class="tok-body"><b>warn</b><p>⚠, “(now vK)”, stale status.</p><p class="cr">12.23 / 5.93</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#ff6b6b">#ff6b6b</div><div style="background:#fff;color:#b42318">#b42318</div></div><div class="tok-body"><b>danger</b><p>‼, ✕, “conflict”, “skipped vK”.</p><p class="cr">6.86 / 6.57</p></div></div>
+      <div class="tok"><div class="tok-sw"><div style="background:#0c1018;color:#a8b3c7">#a8b3c7</div><div style="background:#fff;color:#4f5b70">#4f5b70</div></div><div class="tok-body"><b>guest</b><p>Loops outside the roster; stays in the ledger, never drawn.</p><p class="cr">9.01 / 6.86</p></div></div>
+    </div>
+    <div class="callout"><strong>Verified with a limit:</strong> colours follow the dark, light and ANSI themes. Exact hex values were not observed, because tmux passed 256 colours only.</div>
+
+    <div class="sec-head" id="data"><h2>Data model: observations in, derivations out</h2><span class="tag">PRD §3.2 · Spec §4</span></div>
+    <div class="grid2">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Recorded event</th><th>When</th></tr></thead>
+          <tbody>
+            <tr><td><code>part.assigned</code></td><td>An Agent call started a subagent; carries id, type, description, brief</td></tr>
+            <tr><td><code>tool.call</code> / <code>tool.result</code></td><td>Any loop runs a tool, and how it ended</td></tr>
+            <tr><td><code>artifact.read</code></td><td>A Read succeeded; SHA-256 of the file then</td></tr>
+            <tr><td><code>write.attempt</code></td><td>Just before Write, Edit, MultiEdit, NotebookEdit</td></tr>
+            <tr><td><code>artifact.write</code></td><td>The write landed; new hash, lines added and removed</td></tr>
+            <tr><td><code>conflict.resolved</code></td><td>Your choice: <code>overwrite</code> or <code>reread</code></td></tr>
+            <tr><td><code>part.done</code> / <code>part.failed</code></td><td>The subagent's turn ended</td></tr>
+            <tr><td><code>coda</code></td><td>The coda file was written</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div class="ve-card"><h3>Version</h3><p>Each distinct SHA-256 of a path, numbered from v0, the content first seen.</p></div>
+        <div class="ve-card"><h3>Conflict</h3><p>The writer's last-seen version is not the current one, or it never saw the file and another musician wrote it.</p></div>
+        <div class="ve-card"><h3>Stale read</h3><p>A musician produced work after reading a version someone later replaced. Clears when it re-reads.</p></div>
+        <div class="ve-card"><h3>Handoff</h3><p>Musician B read a version musician A wrote. A second signal comes from conductor briefs that name a file another musician wrote.</p></div>
+      </div>
+    </div>
+    <div class="callout"><strong>Storage:</strong> the ledger is written in 500-event segments, and only segments with new events are rewritten, so a torn write can lose at most part of one segment. A live 559-event ledger was saved across two segments with no gaps.</div>
+
+    <div class="sec-head" id="access"><h2>Keyboard and screen-reader access</h2><span class="tag">PRD §2.12</span></div>
+    <div class="grid2">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><code>/orchestra</code></td><td>Open the pane with focus</td></tr>
+            <tr><td>1 · 2 · 3 · 4</td><td>Ensemble · Score · Artifacts · Coda</td></tr>
+            <tr><td>Tab, ↑, ↓</td><td>Move between controls</td></tr>
+            <tr><td>Enter</td><td>Select or deselect a musician or file</td></tr>
+            <tr><td>Esc</td><td>Close the pane</td></tr>
+            <tr><td>Ctrl+X then Tab</td><td>Focus the pane from the prompt</td></tr>
+            <tr><td>Ctrl+X then X</td><td>Close the pane from anywhere</td></tr>
+            <tr><td>Ctrl+X then arrows</td><td>Resize the pane</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:grid;gap:12px">
+        <div class="ve-card"><h3>Never colour alone</h3><p>Every state pairs a glyph with a word: ♪ playing, ‖ waiting, ✓ done, ✕ failed. Alerts say “conflict”, “stale”, “failed”.</p></div>
+        <div class="ve-card"><h3>Text path</h3><p><code>/orchestra coda</code> prints the whole coda into the transcript. Band and status line are single lines in a fixed order.</p></div>
+        <div class="ve-card"><h3>No motion of its own</h3><p>Orchestra animates nothing; the only animation is Claude Code's spinner.</p></div>
+      </div>
+    </div>
+
+    <div class="sec-head" id="delivery"><h2>Delivery order</h2><span class="tag">PRD §3.6</span></div>
+    <p class="sec-intro">Each step ships on its own. Every step below is built and was verified in real runs on 2026-10-05; see <code>docs/verification.md</code>.</p>
+    <div class="timeline">
+      <div class="tl done"><div class="ve-card"><h3>Agents</h3><p>Conductor and five musicians with roles, tool limits and per-agent <code>model</code> defaults.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Capture and ledger</h3><p>Hashed reads and writes per musician; replay on reload.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Conflict guard</h3><p>Hold, ask, deny with reason; headless send-back.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Band and status line</h3><p>Instrument names, glyphs, measures and current tool.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Pane tabs</h3><p>Ensemble, Score, Artifacts and Coda, by keyboard.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Toasts and Agent-row labels</h3><p>All five toast kinds; labels on single Agent rows.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Segmented ledger</h3><p>500 events per segment; replay on resume.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Show both versions</h3><p>Drawn above the dialog, within its 12-row limit.</p></div></div>
+      <div class="tl done"><div class="ve-card"><h3>Publish to krzemienski/orchestra-cc</h3><p>Public. Version 0.1.1 adds the never-read send-back and the code-review fixes.</p></div></div>
+    </div>
+
+    <div class="sec-head" id="open"><h2>Open items</h2></div>
+    <div class="grid3">
+      <div class="ve-card"><h3>Automatic merge</h3><p>Not offered. A model merge could be added later as an opt-in fourth choice, shown before it is written.</p></div>
+      <div class="ve-card"><h3>Not yet tested</h3><p>Hook timing on long ledgers, the pane's sidebar placement in a fullscreen terminal, and agent teams.</p></div>
+      <div class="ve-card"><h3>Name</h3><p>“Orchestra” collides with getorchestra.io and several GitHub projects. No trademark check has been done.</p></div>
+    </div>
+    <div class="callout"><strong>Could not be verified:</strong> model prices and context windows; 256-colour rendering of hex values; whether a subagent's own tool calls appear as ToolUse rows in the main transcript; the contrast of Claude Code's own <code>dimColor</code>.</div>
+
+    <p class="foot">Source: <code>docs/orchestra-prd.md</code>. Statuses follow <code>docs/verification.md</code>. Companion: <code>docs/orchestra-spec.md</code>, <code>docs/orchestra-research-report.md</code>. Verification record: <code>docs/verification.md</code>.</p>
+  </div>
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  import elkLayouts from 'https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs';
+
+  const config = { fitPadding: 28, minHeight: 360, maxHeightPx: 1500, maxHeightVh: 1.5, maxInitialZoom: 1.6, minZoom: 0.08, maxZoom: 6.5, zoomStep: 0.14, readabilityFloor: 0 };
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  let activeDrag = null;
+  addEventListener('mousemove', (e) => activeDrag?.onMove(e));
+  addEventListener('mouseup', () => { activeDrag?.onEnd(); activeDrag = null; });
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: false, theme: 'base', look: 'classic', layout: 'elk',
+    themeVariables: {
+      fontFamily: "'IBM Plex Sans', sans-serif", fontSize: '15px',
+      primaryColor: isDark ? '#17223a' : '#eef3fb', primaryBorderColor: isDark ? '#8fb3ff' : '#1e3a5f', primaryTextColor: isDark ? '#e6ebf5' : '#14213d',
+      secondaryColor: isDark ? '#2a2414' : '#fbf4e2', secondaryBorderColor: isDark ? '#e3b955' : '#b8860b', secondaryTextColor: isDark ? '#e6ebf5' : '#14213d',
+      tertiaryColor: isDark ? '#121b2e' : '#ffffff', tertiaryBorderColor: isDark ? '#9aa6bd' : '#55607a', tertiaryTextColor: isDark ? '#e6ebf5' : '#14213d',
+      lineColor: isDark ? '#9aa6bd' : '#55607a',
+    }
+  });
+
+  function initDiagram(shell) {
+    const wrap = shell.querySelector('.mermaid-wrap');
+    const viewport = shell.querySelector('.mermaid-viewport');
+    const canvas = shell.querySelector('.mermaid-canvas');
+    const source = shell.querySelector('.diagram-source');
+    const label = shell.querySelector('.zoom-label');
+    let zoom = 1, fitMode = 'contain', panX = 0, panY = 0, svgW = 0, svgH = 0, sx = 0, sy = 0, spx = 0, spy = 0;
+
+    function constrainPan() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight, rW = svgW * zoom, rH = svgH * zoom, pad = config.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+    function applyTransform() {
+      const svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = `translate(${panX}px, ${panY}px)`;
+      label.textContent = Math.round(zoom * 100) + '% — ' + fitMode;
+    }
+    const canPan = () => svgW * zoom + config.fitPadding * 2 > viewport.clientWidth || svgH * zoom + config.fitPadding * 2 > viewport.clientHeight;
+    function computeSmartFit() {
+      const vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      const aW = Math.max(80, vpW - config.fitPadding * 2), aH = Math.max(80, vpH - config.fitPadding * 2);
+      const contain = Math.min(aW / svgW, aH / svgH);
+      let z = contain, mode = 'contain';
+      if (contain < config.readabilityFloor) {
+        if (svgH / svgW >= vpH / Math.max(vpW, 1)) { z = aW / svgW; mode = 'width-priority'; } else { z = aH / svgH; mode = 'height-priority'; }
+      }
+      return { zoom: clamp(z, config.minZoom, config.maxInitialZoom), mode };
+    }
+    function fitDiagram() {
+      if (!svgW) return;
+      const fit = computeSmartFit();
+      zoom = fit.zoom; fitMode = fit.mode;
+      panX = (viewport.clientWidth - svgW * zoom) / 2; panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+    function setOneToOne() { zoom = 1; fitMode = '1:1'; panX = (viewport.clientWidth - svgW) / 2; panY = (viewport.clientHeight - svgH) / 2; applyTransform(); }
+    function zoomAround(factor, cx, cy) {
+      const next = clamp(zoom * factor, config.minZoom, config.maxZoom), ratio = next / zoom;
+      panX = cx - ratio * (cx - panX); panY = cy - ratio * (cy - panY); zoom = next; fitMode = 'custom'; applyTransform();
+    }
+    function readSvgNaturalSize(svg) {
+      let w = svg.viewBox?.baseVal?.width || 0, h = svg.viewBox?.baseVal?.height || 0;
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { const b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { w = 1000; h = 700; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      return { w, h };
+    }
+    function setAdaptiveHeight() {
+      const usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      const idealH = (svgH / svgW) * usableW + config.fitPadding * 2;
+      const hardMax = Math.min(config.maxHeightPx, Math.max(config.minHeight + 40, Math.floor(innerHeight * config.maxHeightVh)));
+      wrap.style.height = Math.round(clamp(idealH, config.minHeight, hardMax)) + 'px';
+    }
+    function openInNewTab() {
+      const svg = canvas.querySelector('svg');
+      if (!svg) return;
+      const clone = svg.cloneNode(true); clone.style.width = ''; clone.style.height = '';
+      const bg = isDark ? '#0b1220' : '#f3f5f9';
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Diagram</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:${bg};padding:40px;box-sizing:border-box}svg{max-width:100%;max-height:90vh;height:auto}</style></head><body>${clone.outerHTML}</body></html>`;
+      open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+    }
+    async function render() {
+      try {
+        const id = 'diagram-' + Math.random().toString(36).slice(2, 9);
+        const { svg } = await mermaid.render(id, source.textContent.trim());
+        canvas.innerHTML = svg;
+        const svgNode = canvas.querySelector('svg');
+        const size = readSvgNaturalSize(svgNode);
+        svgW = size.w; svgH = size.h;
+        svgNode.removeAttribute('width'); svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none'; svgNode.style.display = 'block';
+        setAdaptiveHeight(); fitDiagram();
+      } catch (err) {
+        console.error('Mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'render failed');
+      }
+    }
+    const actions = {
+      'zoom-in': () => zoomAround(1 + config.zoomStep, viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-out': () => zoomAround(1 / (1 + config.zoomStep), viewport.clientWidth / 2, viewport.clientHeight / 2),
+      'zoom-fit': fitDiagram, 'zoom-one': setOneToOne, 'zoom-expand': openInNewTab,
+    };
+    Object.entries(actions).forEach(([a, fn]) => wrap.querySelector(`[data-action="${a}"]`)?.addEventListener('click', fn));
+    viewport.addEventListener('dblclick', fitDiagram);
+    viewport.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const r = viewport.getBoundingClientRect();
+        zoomAround(e.deltaY < 0 ? 1 + config.zoomStep : 1 / (1 + config.zoomStep), e.clientX - r.left, e.clientY - r.top);
+        return;
+      }
+      if (canPan()) { e.preventDefault(); panX -= e.deltaX; panY -= e.deltaY; applyTransform(); }
+    }, { passive: false });
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning'); sx = e.clientX; sy = e.clientY; spx = panX; spy = panY; e.preventDefault();
+      activeDrag = { onMove: (ev) => { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); }, onEnd: () => wrap.classList.remove('is-panning') };
+    });
+    new ResizeObserver(() => { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+    render();
+  }
+  document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+</script>
+<script>
+(function () {
+  const links = document.querySelectorAll('#toc a');
+  const sections = [...links].map((link) => ({ link, el: document.getElementById(link.getAttribute('href').slice(1)) })).filter((s) => s.el);
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((l) => l.classList.remove('active'));
+      const match = sections.find((s) => s.el === entry.target);
+      if (match) {
+        match.link.classList.add('active');
+        if (innerWidth <= 1000) match.link.scrollIntoView({ inline: 'center', block: 'nearest' });
+      }
+    });
+  }, { rootMargin: '-10% 0px -75% 0px' });
+  sections.forEach((s) => observer.observe(s.el));
+})();
+</script>
+</body>
+</html>

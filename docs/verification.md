@@ -18,6 +18,7 @@ The raw captures (about 1,400 screen frames and their indexes) were kept only on
 | J11, `disableAllHooks: true` | Mods off | Passed: agents work, nothing recorded |
 | Fix check, interactive | A write of a file the musician never read | Passed: sent back without a question, then written on retry (below) |
 | J1 and J2, published 0.1.1 | Install from GitHub into an empty config, then load the installed mod | Passed (below) |
+| J10, published 0.1.1 | Headless performance with the installed plugin: a stale-base conflict and a never-read write | Passed (below) |
 
 ## Screens (PRD §2)
 
@@ -67,7 +68,19 @@ Run on 2026-10-06 after version 0.1.1 was pushed, with Claude Code 2.1.291, in a
 | `claude plugin list` | `orchestra@orchestra-cc`, `Version: 0.1.1`, `Status: ✔ enabled` | Verified |
 | J2: `claude -p "/orchestra ledger" --agent orchestra:conductor` | `orchestra: No performance in this session yet: no musician has been assigned a part. colours: dark`, exit 0 | Verified: the installed mod loads and answers |
 
-Not re-run on the installed copy or on 2.1.291: the interactive journeys (J3–J9), including the two-musician conflict. They ran on 2.1.289 against the same code loaded from the working tree.
+### J10 headless, with the installed 0.1.1
+
+Run on 2026-10-06 in the same config, on a fresh copy of the scenario project, with `claude -p "Run the performance in PLAN.md exactly as written." --agent orchestra:conductor` and no `--plugin-dir`. It ran from 12:44:46 to 12:47:23 UTC, exited 0, and wrote nothing to stderr. The ledger (148 events, numbered 1–148 with no gaps) was folded with the installed copy's own `ledger.js`.
+
+| Check | Ledger and files | Status |
+| --- | --- | --- |
+| Stale-base conflict, nobody to ask | Event 52: Trumpet's Edit of `config/limits.json` from v0 while Trumpet 2 had written v1; 53 `conflict.resolved` `reread`; 54 `tool.result` `sentBack` | Verified |
+| A write of a file the writer never read | Event 114: Timpani 2's Write of `.orchestra/logs/test-run.txt`, base none, current v0 by Timpani; 115 `conflict.resolved` `reread`; 116 `sentBack`. Then 121 Timpani 2 reads it, 124–126 its Write lands as v1 | Verified |
+| Names | Nine musicians, zero `Guest` | Verified |
+| Hashes | The latest version of every file in the ledger equals the SHA-256 of the file on disk (`config/limits.json`, `src/limiter.js`, `docs/limits.md`, `.orchestra/logs/test-run.txt`) | Verified |
+| Result | `config/limits.json` holds both `"perMinute": 60` and `"burst": 5`; `npm test` → `# pass 1`, `# fail 0`; the coda file lists both conflicts as sent back to re-read | Verified |
+
+Not re-run on the installed copy or on 2.1.291: the interactive journeys (J3–J9), including the conflict dialog itself. They ran on 2.1.289 against the same code loaded from the working tree.
 
 ## Defects found by verification and fixed
 

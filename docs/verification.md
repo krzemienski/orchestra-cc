@@ -19,6 +19,7 @@ The raw captures (about 1,400 screen frames and their indexes) were kept only on
 | Fix check, interactive | A write of a file the musician never read | Passed: sent back without a question, then written on retry (below) |
 | J1 and J2, published 0.1.1 | Install from GitHub into an empty config, then load the installed mod | Passed (below) |
 | J10, published 0.1.1 | Headless performance with the installed plugin: a stale-base conflict and a never-read write | Passed (below) |
+| J4 interactive, published 0.1.1 | The same performance in tmux with the installed plugin: the conflict dialog, "Show both versions", then "Let it write" | Passed (below) |
 
 ## Screens (PRD §2)
 
@@ -80,7 +81,23 @@ Run on 2026-10-06 in the same config, on a fresh copy of the scenario project, w
 | Hashes | The latest version of every file in the ledger equals the SHA-256 of the file on disk (`config/limits.json`, `src/limiter.js`, `docs/limits.md`, `.orchestra/logs/test-run.txt`) | Verified |
 | Result | `config/limits.json` holds both `"perMinute": 60` and `"burst": 5`; `npm test` → `# pass 1`, `# fail 0`; the coda file lists both conflicts as sent back to re-read | Verified |
 
-Not re-run on the installed copy or on 2.1.291: the interactive journeys (J3–J9), including the conflict dialog itself. They ran on 2.1.289 against the same code loaded from the working tree.
+### J4 interactive, with the installed 0.1.1
+
+Run on 2026-10-06 from 15:18 to 15:22 UTC in the same config, on a fresh copy of the scenario project. Claude Code was started in tmux with `claude --agent orchestra:conductor` and no `--plugin-dir`, and the screen was saved every second (230 frames).
+
+| Check | Screen, ledger and files | Status |
+| --- | --- | --- |
+| Header | `@orchestra:conductor` | Verified |
+| Dialog | 56 s after the task: `Orchestra: Trumpet 2 wrote config/limits.json v1 and Trumpet saw v0. Let Trumpet's Edit go ahead?` with `1. Let it write  2. Send it back to re-read  3. Show both versions`. Claude Code 2.1.291 adds its own `Type something.` and `Chat about this` options; Orchestra treats any answer other than *Let it write* as *Send it back* | Verified; the two added options were not chosen |
+| Show both versions | Drawn above a second question: `Held write by Trumpet (Edit) on config/limits.json`, `Added by Trumpet 2 since Trumpet saw v0 (now v1): + "burst": 5`, `Trumpet wants to replace: "perMinute": 20 ↓ "perMinute": 60`; the Artifacts tab opened on the file | Verified |
+| Let it write | Ledger 56 `write.attempt`, 57 `conflict.shown`, 58 `conflict.resolved` `overwrite`, 59 `artifact.write` v2, no second question because the file had not changed; toast `conflict on config/limits.json: Trumpet vs Trumpet 2, write allowed`; Artifacts `v2 by Trumpet from v0 +1 −1 … skipped v1` | Verified |
+| Never-read write | Ledger 119–121: Timpani 2's Write of `.orchestra/logs/test-run.txt` sent back with no dialog | Verified |
+| Result | `config/limits.json` holds both `"perMinute": 60` and `"burst": 5`, because an Edit replaces text in the current file; `npm test` → `# pass 1`; every file's latest ledger hash equals the file on disk; 149 events with no gaps; zero `Guest` | Verified |
+| Coda (G4) | Coda tab, `/orchestra coda` and the coda file show the same eight contributors and line counts, both conflicts, the recovered failure and three stale reads; status `0 playing · 8 done · 5 artifacts changed · 1 stale` | Verified |
+
+The approval was given by an Enter sent straight after the `3` key, which answered the second question with its default; the comparison was on screen when it did (frame 90). The run covers the *Let it write* and *Show both versions* choices; *Send it back* was covered by J10 above.
+
+Not re-run on the installed copy or on 2.1.291: J5–J9 as separate journeys (failure, stale read and coda were exercised inside this run, but reload with `claude --continue` and the Score and Ensemble tabs were not). They ran on 2.1.289 against the same code loaded from the working tree.
 
 ## Defects found by verification and fixed
 

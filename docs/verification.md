@@ -1,6 +1,6 @@
 # Orchestra — verification record
 
-Date: 2026-10-05. Claude Code 2.1.289 on macOS, in tmux (230×64, later 50×41 when other clients attached).
+Date: 2026-10-05. Claude Code 2.1.289 on macOS, in tmux (230×64, later 50×41 when other clients attached). The install from the published repository was run on 2026-10-06 with Claude Code 2.1.291 (see "Install from the published repository").
 
 Every result below comes from a real run. The plugin was loaded with `--plugin-dir ./plugin`. Each run used an isolated `CLAUDE_CONFIG_DIR` (a temporary directory with no other plugins, hooks or MCP servers), so the author's own configuration was neither used nor changed. Claude Code was driven by sending keystrokes into tmux; screens were read with `tmux capture-pane` (plain and with colour codes); and a recorder saved the screen every second, so toasts that last 4–8 s were caught. Ledgers were read back with the plugin's own `fold()` and compared with `shasum -a 256` and `git show`.
 
@@ -17,6 +17,7 @@ The raw captures (about 1,400 screen frames and their indexes) were kept only on
 | J10, headless `claude -p` | Same conflict with nobody to answer | Passed: sent back automatically |
 | J11, `disableAllHooks: true` | Mods off | Passed: agents work, nothing recorded |
 | Fix check, interactive | A write of a file the musician never read | Passed: sent back without a question, then written on retry (below) |
+| J1 and J2, published 0.1.1 | Install from GitHub into an empty config, then load the installed mod | Passed (below) |
 
 ## Screens (PRD §2)
 
@@ -53,6 +54,20 @@ The raw captures (about 1,400 screen frames and their indexes) were kept only on
 | Ledger replay | All five run ledgers (172, 115, 143, 59 and 48 events) fold without error under the final code, with zero `Guest` entries | Verified |
 | Mods disabled (J11) | `disableAllHooks: true`: exit 0, the violin's notes file written, no `.orchestra/performances` directory | Verified |
 | Plugin checks | `claude plugin validate ./plugin` → `✔ Validation passed`; `tsc -p plugin --noEmit` → exit 0 | Verified |
+
+## Install from the published repository
+
+Run on 2026-10-06 after version 0.1.1 was pushed, with Claude Code 2.1.291, in a new empty `CLAUDE_CONFIG_DIR` and a new empty git project. Unlike the runs above, the plugin was installed from GitHub, not loaded with `--plugin-dir`.
+
+| Step | Output | Status |
+| --- | --- | --- |
+| J1: `claude plugin marketplace add krzemienski/orchestra-cc` | `✔ Successfully added marketplace: orchestra-cc`, exit 0 | Verified |
+| J1: `claude plugin install orchestra@orchestra-cc` | `✔ Successfully installed plugin: orchestra@orchestra-cc (scope: user)`, exit 0 | Verified |
+| Installed copy | Cached under `plugins/cache/orchestra-cc/orchestra/0.1.1/`; its `plugin.json` says `"version": "0.1.1"`; its `register.js` contains the never-read send-back and the per-file lock | Verified |
+| `claude plugin list` | `orchestra@orchestra-cc`, `Version: 0.1.1`, `Status: ✔ enabled` | Verified |
+| J2: `claude -p "/orchestra ledger" --agent orchestra:conductor` | `orchestra: No performance in this session yet: no musician has been assigned a part. colours: dark`, exit 0 | Verified: the installed mod loads and answers |
+
+Not re-run on the installed copy or on 2.1.291: the interactive journeys (J3–J9), including the two-musician conflict. They ran on 2.1.289 against the same code loaded from the working tree.
 
 ## Defects found by verification and fixed
 

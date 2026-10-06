@@ -74,7 +74,7 @@ Quality metrics come from real runs. Adoption metrics have no history yet. Their
 | Recorded hash equals the real file hash | Matched for all text files checked in run 1 | 100% for text files | Compare ledger versions with `shasum -a 256` and `git show` |
 | Coda counts agree across Coda tab, `/orchestra coda` and the coda file | Agreed in run 1 | Agree in every verification run | Capture all three for the same session |
 | Slowest Orchestra hook, per event | **Not measured** | Under 1 s typical, never near the 10 s hook budget | Time hooks in a long run, including a resume with a large ledger |
-| Install from the published repo succeeds in a clean config | **Not in the verification record** | Both commands exit 0, then J2 passes | `claude plugin marketplace add krzemienski/orchestra-cc` and `claude plugin install orchestra@orchestra-cc` in an empty `CLAUDE_CONFIG_DIR` |
+| Install from the published repo succeeds in a clean config | Passed for 0.1.1 on Claude Code 2.1.291 (2026-10-06) | Both commands exit 0, then J2 passes, for every release | `claude plugin marketplace add krzemienski/orchestra-cc` and `claude plugin install orchestra@orchestra-cc` in an empty `CLAUDE_CONFIG_DIR` |
 | GitHub stars | 0 (2026-10-06) | Proposed: 50 within 90 days of the first announcement | GitHub repo page |
 | Issues opened by people other than the owner | 0 | Proposed: 5 within 90 days, as a sign of real use | GitHub issues |
 
@@ -122,7 +122,7 @@ Segments are defined by the job the person is trying to get done.
 
 | # | User Story | Acceptance Criteria |
 | --- | --- | --- |
-| P1-1 | As a lead, I want proof the version I install is the one that was verified. | J1 and J2 run against the published 0.1.1 in a clean config and recorded in `docs/verification.md` |
+| P1-1 | As a lead, I want proof the version I install is the one that was verified. | J1 and J2 run against the published 0.1.1 in a clean config and recorded in `docs/verification.md`. Done 2026-10-06 |
 | P1-2 | As a lead, I want proof Orchestra won't slow Claude Code. | Hook times measured in a run over 500 events and on a resume of that ledger, and recorded |
 | P1-3 | As a lead, I want a failing test to show as failed even if the agent hides the exit code. | Failure is read from the Bash result's own exit status, not from agent instructions; a command ending in `; echo $?` that fails is still recorded as failed |
 | P1-4 | As a reviewer, I want files that agents create with shell commands recorded too. | A file created by Bash during a part appears in the ledger with an author (or marked uncertain when calls overlap) |
@@ -191,8 +191,8 @@ Relative timeframes only. Nothing here is scheduled yet.
 | Phase | Contents | Rough size | Depends on |
 | --- | --- | --- | --- |
 | **0.1.0 (shipped)** | P0-1 to P0-12 except P0-6, published to `krzemienski/orchestra-cc` | Done | — |
-| **0.1.1 (shipped)** | P0-6, plus nine fixes from an independent code review | Done | — |
-| **Next version** | P1-1 to P1-6: J1/J2 from the published copy: hook timing, exit codes from the real result, Bash-created files, sidebar check, doc status cleanup | A few weeks | — |
+| **0.1.1 (shipped)** | P0-6, plus nine fixes from an independent code review; P1-1, J1 and J2 from the published copy | Done | — |
+| **Next version** | P1-2 to P1-6: hook timing, exit codes from the real result, Bash-created files, sidebar check, doc status cleanup | A few weeks | — |
 | **Later** | P2 items, each started only if user feedback asks for it. P2-2 waits for a live test of mods and agent teams. P2-5 waits on Claude Code | Open | Adoption signal; Claude Code changes |
 
 **Release rule (carried over from the engineering spec).** A version is published only after every row of the verification plan in `docs/orchestra-spec.md` §10 passes in a real run, or each failing row is written down as a known limitation.

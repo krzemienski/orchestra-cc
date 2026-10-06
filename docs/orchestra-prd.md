@@ -137,7 +137,7 @@ Data placement, left to right:
 - Performing: as above.
 - After reload: rebuilt from the ledger.
 
-[VERIFIED: `e2e-evidence/stage3-interactive-20261005-181339/04-after-send-back.txt` shows `Orchestra · 2 playing · 1 done · 1 artifacts changed`]
+[VERIFIED: see `docs/verification.md`, S2]
 
 **Controls:** none.
 
@@ -169,7 +169,7 @@ Data placement, left to right:
   Orchestra
   No performance yet. Start one with: claude --agent orchestra:conductor
   ```
-  [VERIFIED: `e2e-evidence/stage3-interactive-20261005-181339/01-pane-empty-state.txt`]
+  [VERIFIED: see `docs/verification.md`, S3]
 - **Open, performing:** tab bar plus the body of the active tab.
 - **Narrow, unasked:** an auto-open from the first `part.assigned` waits undrawn until the terminal is 144 columns wide. `/orchestra` always opens it.
 
@@ -422,7 +422,7 @@ Automatic merge is a non-goal. It would need a model call inside a held write wi
 - Dismissed.
 - Headless (auto send-back).
 
-[Dialog and send-back VERIFIED with the name defect: `e2e-evidence/stage3-interactive-20261005-181339/03-conflict-question.txt`, `04-after-send-back.txt`]
+[VERIFIED: see `docs/verification.md`, S9]
 
 **Controls:**
 - ↑/↓ and Enter, or the digit of the option.

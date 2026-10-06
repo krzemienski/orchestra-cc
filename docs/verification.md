@@ -4,7 +4,7 @@ Date: 2026-10-05. Claude Code 2.1.289 on macOS, in tmux (230×64, later 50×41 w
 
 Every result below comes from a real run. The plugin was loaded with `--plugin-dir ./plugin`. Each run used an isolated `CLAUDE_CONFIG_DIR` (a temporary directory with no other plugins, hooks or MCP servers), so the author's own configuration was neither used nor changed. Claude Code was driven by sending keystrokes into tmux; screens were read with `tmux capture-pane` (plain and with colour codes); and a recorder saved the screen every second, so toasts that last 4–8 s were caught. Ledgers were read back with the plugin's own `fold()` and compared with `shasum -a 256` and `git show`.
 
-The raw captures (about 1,400 screen frames and their indexes) stayed on the verification machine under `e2e-evidence/` and are not part of this repository. The key output of each check is quoted here.
+The raw captures (about 1,400 screen frames and their indexes) were kept only on the verification machine and have since been deleted; they were never part of this repository. The key output of each check is quoted here, so this document is the record.
 
 ## Runs
 

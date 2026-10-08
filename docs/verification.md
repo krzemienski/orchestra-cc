@@ -20,6 +20,7 @@ The raw captures (about 1,400 screen frames and their indexes) were kept only on
 | J1 and J2, published 0.1.1 | Install from GitHub into an empty config, then load the installed mod | Passed (below) |
 | J10, published 0.1.1 | Headless performance with the installed plugin: a stale-base conflict and a never-read write | Passed (below) |
 | J4 interactive, published 0.1.1 | The same performance in tmux with the installed plugin: the conflict dialog, "Show both versions", then "Let it write" | Passed (below) |
+| 0.1.2 fixes | Headless J10 and an interactive forced conflict with the working-tree plugin, plus folds of crafted and earlier ledgers | Passed (below) |
 
 ## Screens (PRD §2)
 
@@ -98,6 +99,29 @@ Run on 2026-10-06 from 15:18 to 15:22 UTC in the same config, on a fresh copy of
 The approval was given by an Enter sent straight after the `3` key, which answered the second question with its default; the comparison was on screen when it did (frame 90). The run covers the *Let it write* and *Show both versions* choices; *Send it back* was covered by J10 above.
 
 Not re-run on the installed copy or on 2.1.291: J5–J9 as separate journeys (failure, stale read and coda were exercised inside this run, but reload with `claude --continue` and the Score and Ensemble tabs were not). They ran on 2.1.289 against the same code loaded from the working tree.
+
+## Version 0.1.2: fixes from the second code review
+
+A second independent review of 0.1.1 found ten problems. Two further reviews of the fixes found ten smaller ones, mostly in the new code. All are fixed in 0.1.2. The runs below used Claude Code 2.1.294, an isolated config, and the working-tree plugin loaded with `--plugin-dir`, because 0.1.2 was not yet published. The live results are from the final code.
+
+| Finding in 0.1.1 | Fix in 0.1.2 | Confirmed by |
+| --- | --- | --- |
+| A fresh session in a process that had already saved a ledger kept the old "saved up to" number, so its events were not written | A new session replaces its paths, state, counters and view in one step, and a save captures its files and events when it is queued, so a save left over from the previous session writes only that session's files | Code inspection and review. The trigger could not be reproduced: on 2.1.294, `/clear` keeps the same session id. Live: after quitting and `claude --continue`, the band and status line matched the ones before (`Trumpet ✓ 6`, `0 playing · 1 done · 2 artifacts changed`), and a part run after the resume was saved to the same ledger (events 45–62, no gaps) |
+| An error in Orchestra's own bookkeeping could fail a musician's tool call or stop it running | Bookkeeping before and after the tool fails open and the tool's real result is returned. A failed toast or redraw never undoes a recorded event. If the guard fails while holding a write the user had not allowed, the write is sent back instead of landing | Code inspection and review |
+| On *Let it write*, `overwrite` and the "write allowed" toast were recorded before the re-check, so a re-asked write was listed as allowed even if it never landed | The file is checked first. If it changed, the write is attempted again: a new conflict records `reask` and asks again; content matching what the writer saw records `overwrite` with no second question. While the second question is open the writer shows as waiting | Live, three forced conflicts. During one re-ask, the ledger folded to `Trumpet waiting` and `1 waiting · 1 conflict`. X: the file was edited by hand while the dialog was open; the first approval recorded 33 `reask` with no toast and the next question named v2; the second recorded 34 `overwrite`, then the write and the toast. Y: the file was put back to the bytes the writer had read; one approval recorded 74 `overwrite`, no second question appeared, and the toast said "write allowed" |
+| After a re-ask, the write's line counts were measured against the text before the dialog | The guard returns the snapshot the write actually replaced | Live, conflict X: the write records `+1 −1`, the one changed line |
+| Every file the conductor read and that later changed made its score look stale | The conductor is left out of stale-read checks; it reads to plan | Folded events: flagged on 0.1.1, not on 0.1.2. A flute that read `src.js` before a trumpet changed it is still flagged on both |
+| A Bash revert to content a musician had already read raised a false conflict, and a stale mark was never cleared after such a revert | Conflicts, stale reads and the clearing of stale reads compare file content, not version numbers | Folded events: the revert-then-edit raises 1 conflict on 0.1.1 and none on 0.1.2; the revert-then-redo stays "Not redone" on 0.1.1 and reads "Redone from the current version" on 0.1.2 |
+| Two Bash calls from one musician at once overwrote each other's overlap mark | Each call keeps its own mark | Code inspection and review |
+| The conductor's role still said it resolves conflicts | Role and agent description reworded: the user decides conflicts | Coda and agent file |
+| Code comments described behaviour the 0.1.1 patch had removed | Rewritten | Code inspection |
+| Every Bash call hashed tracked files one at a time | Files are read and hashed together | Code inspection |
+
+**Regression checks.** Four ledgers from the 2026-10-05 runs (164, 144, 149 and 138 events) fold to the same conflicts, stale reads and coda under 0.1.2 as under 0.1.1, apart from the conductor's role text. The headless performance (J10) on the final code ran 06:46–06:49 UTC, exited 0 with nothing on stderr, and sent back the stale-base Edit of `config/limits.json` (events 54–55). The config holds both `"perMinute": 60` and `"burst": 5`, and `npm test` passes. In every run, each file's latest ledger hash equals the file on disk and no musician is named `Guest`. `claude plugin validate ./plugin` passes and `tsc -p plugin --noEmit` exits 0.
+
+**Limitation found while forcing the conflict.** A change made outside the ensemble while a musician's lone Bash call is running (here, a hand edit during `sleep 45`) is credited to that musician as a certain Bash change. Overlap marking only sees other loops' tool calls, not edits from outside Claude Code. This is unchanged from 0.1.1.
+
+**Raised in review, not changed.** A Bash call reads every tracked file at once, with no limit. The conductor's own Agent call may keep it "in flight" for a whole wave, which would mark most musicians' Bash changes uncertain. A rewrite of the score can flag musicians who read it. A file written through a tool while another loop's Bash call is running can be recorded as written by someone outside the ensemble. All predate 0.1.2 and need their own runs.
 
 ## Defects found by verification and fixed
 

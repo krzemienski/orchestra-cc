@@ -25,7 +25,7 @@
 
 /** @type {Record<string, { name: string, role: string }>} */
 export const INSTRUMENTS = {
-  conductor: { name: 'Conductor', role: 'Plans the score, assigns parts, resolves conflicts' },
+  conductor: { name: 'Conductor', role: 'Plans the score, assigns parts, presents the coda' },
   violin: { name: 'Violin', role: 'Scout' },
   trumpet: { name: 'Trumpet', role: 'Implementer' },
   flute: { name: 'Flute', role: 'Scribe' },
@@ -104,7 +104,10 @@ function ensureArtifact(state, path) {
   return state.artifacts[path]
 }
 
-const latest = (a) => a.versions[a.versions.length - 1]
+export const latest = (a) => a.versions[a.versions.length - 1]
+
+// Two version numbers of one file can hold the same bytes, for example after a revert.
+const sameContent = (a, v1, v2) => v1 === v2 || (a.versions[v1] !== undefined && a.versions[v1]?.hash === a.versions[v2]?.hash)
 
 // The version a hash belongs to. A hash never seen before is a version nobody in the
 // ensemble wrote: the file as it was at first sight, or a change made outside.
@@ -204,7 +207,7 @@ const handlers = {
     const cur = versionOf(state, e.path, e.hash, e.seq)
     const seen = m.seen[e.path]
     const overSomeoneElse = !NOBODY.has(cur.agent) && cur.agent !== e.agent
-    const changedSinceSeen = seen !== undefined && seen !== cur.v
+    const changedSinceSeen = seen !== undefined && !sameContent(state.artifacts[e.path], seen, cur.v)
     const blind = seen === undefined && overSomeoneElse
     if (!changedSinceSeen && !blind) return
     state.conflicts.push({
@@ -224,7 +227,8 @@ const handlers = {
     c.choice = e.choice
     c.resolvedSeq = e.seq
     const m = state.musicians[c.agent]
-    if (m && m.state === 'waiting') m.state = 'playing'
+    const stillHeld = state.conflicts.some((x) => x.agent === c.agent && !x.resolved)
+    if (m && m.state === 'waiting' && !stillHeld) m.state = 'playing'
   },
   'artifact.write'(state, e) {
     const m = ensureMusician(state, e.agent)
@@ -239,8 +243,10 @@ const handlers = {
     // Stale work is redone when its product is rewritten by someone who has seen the current input.
     for (const s of state.stale) {
       if (s.cleared || !s.products.includes(e.path)) continue
-      const input = latest(ensureArtifact(state, s.path))
-      if (input && (m.seen[s.path] ?? -1) >= input.v) {
+      const art = ensureArtifact(state, s.path)
+      const input = latest(art)
+      const seenV = m.seen[s.path]
+      if (input && seenV !== undefined && (seenV >= input.v || sameContent(art, seenV, input.v))) {
         s.cleared = true
         s.clearedSeq = e.seq
         s.clearedBy = e.agent
@@ -259,7 +265,7 @@ const handlers = {
       const other = state.musicians[key]
       if (!other) continue
       const readV = other.seen[e.path]
-      if (key === e.agent || readV === undefined || readV >= ver.v) continue
+      if (key === e.agent || key === CONDUCTOR || readV === undefined || readV >= ver.v || sameContent(a, readV, ver.v)) continue
       const products = productsSince(state, key, other.readSeq[e.path]).filter((p) => p !== e.path)
       if (!products.length) continue
       if (state.stale.some((s) => s.agent === key && s.path === e.path && !s.cleared)) continue
@@ -268,10 +274,13 @@ const handlers = {
     // The other order: this writer read an input, someone else changed it, and only now does
     // the writer produce from the version they first saw. The check above never sees that,
     // because it runs when the input changes, before the product exists.
+    // The conductor is left out of both checks: it reads to plan, and its only product is the
+    // score, so an input changing under it is the plan working, not stale work.
+    if (e.agent === CONDUCTOR) return
     for (const [input, readV] of Object.entries(m.seen)) {
       if (input === e.path) continue
       const cur = latest(state.artifacts[input])
-      if (!cur || readV >= cur.v) continue
+      if (!cur || readV >= cur.v || sameContent(state.artifacts[input], readV, cur.v)) continue
       if (state.stale.some((s) => s.agent === e.agent && s.path === input && !s.cleared)) continue
       state.stale.push({ agent: e.agent, path: input, readV, currentV: cur.v, writer: cur.agent, products: [e.path], seq: e.seq, cleared: false })
     }
@@ -359,7 +368,10 @@ export function coda(state) {
   const conflicts = state.conflicts.map((c) => ({
     ...c,
     text: `${nameOf(state, c.agent)} tried to write ${c.path} over ${nameOf(state, c.against)}'s v${c.current} (${c.base === null ? 'never read it' : `had seen v${c.base}`}). ${
-      !c.resolved ? 'Still open.' : c.choice === 'overwrite' ? 'You let the write go ahead.' : 'The write was sent back to re-read first.'}`,
+      !c.resolved ? 'Still open.'
+        : c.choice === 'overwrite' ? 'You let the write go ahead.'
+        : c.choice === 'reask' ? 'You let the write go ahead, but the file changed before it landed, so you were asked again.'
+        : 'The write was sent back to re-read first.'}`,
   }))
   const failures = [
     ...musicians(state).filter((m) => m.state === 'failed').map((m) => `${m.name}'s part ended with ${m.failure}.`),

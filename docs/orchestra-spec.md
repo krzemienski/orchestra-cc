@@ -79,7 +79,7 @@ Every event has `seq` (1, 2, 3 … per session), `ts` (epoch milliseconds) and `
 | `artifact.read` | `agent`, `path`, `hash` | A Read succeeded; `hash` is SHA-256 of the file at that moment |
 | `write.attempt` | `agent`, `path`, `hash` (null if the file does not exist) | Just before Write, Edit, MultiEdit or NotebookEdit runs |
 | `artifact.write` | `agent`, `path`, `hash`, `added`, `removed` | The write landed; line counts are a multiset diff of before and after |
-| `conflict.resolved` | `id`, `choice` (`overwrite` or `reread`) | The user (or the `-p` default) decided a held write |
+| `conflict.resolved` | `id`, `choice` (`overwrite`, `reread`, or `reask` when the user allowed the write but the file changed before it landed and a new question followed) | The user (or the `-p` default) decided a held write |
 | `part.done` / `part.failed` | `agent`, `answer` / `reason`, `answer` | The subagent's turn ended (`turn.complete` with that `agentId`) |
 | `coda` | `path`, `settled` | The coda file was written |
 
@@ -87,7 +87,7 @@ Every event has `seq` (1, 2, 3 … per session), `ts` (epoch milliseconds) and `
 
 - **Version numbering.** For each path, versions are the distinct hashes in the order first seen. A hash first seen on a read before anyone in the ensemble wrote it is v0, author `repo`. A later unseen hash not written by a musician is author `outside` (for example a Bash `sed -i`).
 - **Conflict.** On `write.attempt` by musician M for path P with current version C: a conflict exists if M has seen a version of P and it is not C, or M has never seen P and C was written by another musician. The write is held (§5, step 6).
-- **Stale read.** On `artifact.write` creating version V of P by musician W: every other musician that last saw an older version of P **and** has written anything since that read is marked stale on P. The mark clears when that musician reads P at version ≥ V.
+- **Stale read.** On `artifact.write` creating version V of P by musician W: every other musician that last saw an older version of P **and** has written anything since that read is marked stale on P. The other order is caught too: when W writes a product, every input W last saw at an older version is marked stale. Versions with identical content never count as older, and the conductor is left out of both checks because it reads to plan. The mark clears when that musician reads P at version ≥ V, or rewrites the product after seeing P's current content.
 - **Handoff (read signal).** Musician B reads a version authored by musician A ≠ B → handoff A → B for that path and version, once.
 - **Handoff (brief signal) — NOT DONE.** When the conductor assigns a part whose prompt names a path whose latest version another musician wrote, record a handoff from that author to the new musician. Adds visibility for work passed in the brief rather than by a read.
 - **Measures.** Count of `tool.result` events for that musician.

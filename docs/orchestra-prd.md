@@ -198,7 +198,7 @@ Data placement, left to right:
 ```
 3 playing in parallel · 2 done
 
-Conductor  Plans the score, assigns parts, resolves conflicts · ♪ playing
+Conductor  Plans the score, assigns parts, presents the coda · ♪ playing
   Coordinating the ensemble
 
 Violin  Scout · ✓ done

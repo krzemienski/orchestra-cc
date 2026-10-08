@@ -3,7 +3,7 @@
 // and draws the ensemble on the surfaces a mod owns: a pane, the band above the prompt,
 // the status line, toasts, the spinner and the Agent tool rows.
 
-import { CONDUCTOR, instrumentDef, apply, codaMarkdown, coda, emptyState, fold, instrumentOf, INSTRUMENTS, isPerformance, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
+import { CONDUCTOR, instrumentDef, apply, codaMarkdown, coda, emptyState, fold, instrumentOf, INSTRUMENTS, isPerformance, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { GLYPH, TABS, band, heldWrite, pane } from './views.js'
 import { colorMode, modeFor, paint, setColorMode } from './palette.js'
 
@@ -29,13 +29,17 @@ let seq = 0
 // The highest sequence number already written to a segment file.
 let persisted = 0
 let persisting = Promise.resolve()
+// Bumped whenever the session's paths and state are replaced, so a save queued by the previous
+// session can finish writing its own files without moving this session's `persisted`.
+let epoch = 0
 // Tool calls running now, per agent loop: a Bash change is attributed with certainty only when
 // no other loop had a call in flight.
 const inFlight = new Map()
-// Bash calls still running, per loop. A call is marked overlapped when any other loop has a
-// call in flight while it runs, including one that starts and ends entirely in the middle.
-// The mark is read after the command's own snapshots, so it stays until those finish.
-const bashRunning = new Map()
+// Bash calls still running, one mark per call, so a loop's parallel Bash calls each keep their
+// own. A call is marked overlapped when any other loop has a call in flight while it runs,
+// including one that starts and ends entirely in the middle. The mark is read after the
+// command's own snapshots, so it stays until those finish.
+const bashRunning = new Set()
 // One write to a file at a time. The guard checks the file's hash and the write lands later,
 // several steps apart, so without this a second musician's write can land in between and be
 // credited to the first. The lock is held until that write's result is recorded.
@@ -99,26 +103,35 @@ async function snapshot($, path) {
   }
 }
 
-// The ledger is written in segments of SEGMENT_EVENTS events; only the newest segment is
-// rewritten, so a torn write can lose at most the events of that one segment.
-// `record` hands out the next sequence number before it awaits the clock, so two hooks can
-// hold consecutive numbers at once and be saved out of order. Saving only the newest segment
-// would then skip the older one, and its last events would never reach disk. So each save
-// writes every segment that holds an event saved since the previous save.
+// The ledger is written in segments of SEGMENT_EVENTS events. Each save rewrites only the
+// segments holding events not yet saved: normally just the newest, and both sides of a segment
+// boundary when one is crossed between saves. A torn write can lose at most one segment.
+// Everything a save writes is captured when it is queued, so it always writes one session's own
+// events to that session's files, even if it runs after the next session has started.
 async function persist($) {
   if (!isPerformance(state) || !ledgerBase) return
-  const from = persisted + 1
+  const mine = epoch
   const pending = state.events.filter((x) => x.seq > persisted)
-  const segments = [...new Set(pending.map((x) => segmentOf(x.seq)))]
+  if (!pending.length) return persisting
+  const upTo = Math.max(...pending.map((x) => x.seq))
+  const gitignore = `${cwd}/.orchestra/.gitignore`
+  const writes = [...new Set(pending.map((x) => segmentOf(x.seq)))].map((segment) => ({
+    file: segmentFile(segment),
+    body: `${state.events.filter((x) => segmentOf(x.seq) === segment).map((x) => JSON.stringify(x)).join('\n')}\n`,
+  }))
   persisting = persisting.then(async () => {
-    if (!(await $.fs.exists(`${cwd}/.orchestra/.gitignore`))) await $.fs.write(`${cwd}/.orchestra/.gitignore`, '*\n')
-    for (const segment of segments) {
-      const body = state.events.filter((x) => segmentOf(x.seq) === segment).map((x) => JSON.stringify(x)).join('\n')
-      await $.fs.write(segmentFile(segment), `${body}\n`)
-    }
-    persisted = Math.max(persisted, ...pending.map((x) => x.seq), from - 1)
-  }).catch((err) => $.ui.log(`Orchestra could not write its ledger: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' }))
+    if (!(await $.fs.exists(gitignore))) await $.fs.write(gitignore, '*\n')
+    for (const w of writes) await $.fs.write(w.file, w.body)
+    if (epoch === mine) persisted = Math.max(persisted, upTo)
+  }).catch((err) => debug($, `Orchestra could not write its ledger: ${err instanceof Error ? err.message : String(err)}`))
   return persisting
+}
+
+// A debug-log line that never throws, for use inside error paths.
+function debug($, text) {
+  try {
+    $.ui.log(text, { to: 'debug' })
+  } catch {}
 }
 
 async function loadLedger($) {
@@ -149,19 +162,25 @@ async function record($, fields) {
   const before = { stale: state.stale.length, handoffs: state.handoffs.length, conflicts: state.conflicts.length, failures: state.toolFailures.length }
   const event = { seq: ++seq, ts, ...fields }
   apply(state, event)
-  for (const s of state.stale.slice(before.stale)) {
-    $.ui.toast(`Orchestra · stale read: ${nameOf(state, s.agent)} worked from v${s.readV} of ${s.path}; ${nameOf(state, s.writer)} wrote v${s.currentV}`, { timeoutMs: 6000 })
+  // Once the event is applied it stands. Telling the user about it must not undo a decision
+  // the caller is about to act on, so a failed toast or redraw is only logged.
+  try {
+    for (const s of state.stale.slice(before.stale)) {
+      $.ui.toast(`Orchestra · stale read: ${nameOf(state, s.agent)} worked from v${s.readV} of ${s.path}; ${nameOf(state, s.writer)} wrote v${s.currentV}`, { timeoutMs: 6000 })
+    }
+    for (const h of state.handoffs.slice(before.handoffs)) {
+      const how = h.via === 'brief' ? 'was handed' : 'read'
+      $.ui.toast(`Orchestra · handoff: ${nameOf(state, h.to)} ${how} ${h.path} v${h.v} from ${nameOf(state, h.from)}`)
+    }
+    for (const f of state.toolFailures.slice(before.failures).filter((x) => x.agent !== CONDUCTOR)) {
+      $.ui.toast(`Orchestra · ${nameOf(state, f.agent)}: ${f.tool} failed`, { timeoutMs: 6000 })
+    }
+    await persist($)
+    $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
+    $.ui.invalidate('ui.render')
+  } catch (err) {
+    debug($, `Orchestra could not show event ${event.seq}: ${err instanceof Error ? err.message : String(err)}`)
   }
-  for (const h of state.handoffs.slice(before.handoffs)) {
-    const how = h.via === 'brief' ? 'was handed' : 'read'
-    $.ui.toast(`Orchestra · handoff: ${nameOf(state, h.to)} ${how} ${h.path} v${h.v} from ${nameOf(state, h.from)}`)
-  }
-  for (const f of state.toolFailures.slice(before.failures).filter((x) => x.agent !== CONDUCTOR)) {
-    $.ui.toast(`Orchestra · ${nameOf(state, f.agent)}: ${f.tool} failed`, { timeoutMs: 6000 })
-  }
-  await persist($)
-  $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
-  $.ui.invalidate('ui.render')
   return event
 }
 
@@ -205,17 +224,25 @@ function proposedText(e) {
 // any Write or Edit of a file that loop has not read ("File has not been read yet"), and a mod
 // cannot record the read for it, so "Let it write" would fail every time. Sending it back makes
 // the musician read the file and reapply the change, which is the only path that succeeds.
-async function guardWrite($, e, key, path, current) {
+// Returns `{ deny }` to send the write back, or `{ base }`: the snapshot the write will replace.
+// `approved` is an earlier conflict on this write that the user let through before the file
+// moved on; it is settled here, once it is known whether the new version needs a question.
+/** @param {import('./ledger.js').Conflict|null} [approved] */
+async function guardWrite($, e, key, path, current, approved = null) {
   const attempt = await record($, { type: 'write.attempt', agent: key, path, hash: current.hash })
   const conflict = state.conflicts.find((c) => c.seq === attempt.seq)
-  if (!conflict) return null
+  if (approved) await record($, { type: 'conflict.resolved', id: approved.id, choice: conflict ? 'reask' : 'overwrite' })
+  if (!conflict) {
+    if (approved) notify($, `Orchestra · conflict on ${path}: ${nameOf(state, key)} vs ${nameOf(state, approved.against)}, write allowed`)
+    return { base: current }
+  }
   const writer = nameOf(state, key)
   const other = nameOf(state, conflict.against)
   const neverRead = conflict.base === null
   const seenText = neverRead ? `${writer} never read it` : `${writer} saw v${conflict.base}`
   if (neverRead) {
     await record($, { type: 'conflict.resolved', id: conflict.id, choice: 'reread' })
-    $.ui.toast(`Orchestra · conflict on ${path}: ${writer} vs ${other}, sent back to re-read`, { timeoutMs: 8000 })
+    notify($, `Orchestra · conflict on ${path}: ${writer} vs ${other}, sent back to re-read`)
     return { deny: `Orchestra: ${other} wrote ${path} v${conflict.current} and you never read it. Read the file, then reapply your change on top of its current content.` }
   }
   const question = `Orchestra: ${other} wrote ${path} v${conflict.current} and ${seenText}. Let ${writer}'s ${e.tool} go ahead?`
@@ -238,16 +265,26 @@ async function guardWrite($, e, key, path, current) {
     choice = 'reread'
   }
   view.held = null
-  await record($, { type: 'conflict.resolved', id: conflict.id, choice })
-  $.ui.toast(`Orchestra · conflict on ${path}: ${writer} vs ${other}, ${choice === 'overwrite' ? 'write allowed' : 'sent back to re-read'}`, { timeoutMs: 8000 })
-  // The dialog can stay open while other musicians keep writing. If the file moved on, the
-  // approval was for an older version, so ask again about the version that is there now.
+  // Writes through Write and Edit wait on the file lock, but a Bash command or an edit outside
+  // Claude Code can change the file while the dialog is open. Then the approval was for an older
+  // version, so the write is attempted again against the version there now.
   if (choice === 'overwrite') {
     const again = await snapshot($, path)
-    if (again.hash && again.hash !== current.hash) return guardWrite($, e, key, path, again)
-    return null
+    if (again.hash !== current.hash) return guardWrite($, e, key, path, again, conflict)
   }
+  await record($, { type: 'conflict.resolved', id: conflict.id, choice })
+  notify($, `Orchestra · conflict on ${path}: ${writer} vs ${other}, ${choice === 'overwrite' ? 'write allowed' : 'sent back to re-read'}`)
+  if (choice === 'overwrite') return { base: current }
   return { deny: `Orchestra: ${other} wrote ${path} v${conflict.current} and you ${conflict.base === null ? 'never read it' : `last saw v${conflict.base}`}. Read the file again and reapply your change on top of its current content.` }
+}
+
+// A conflict's outcome toast. Shown after the decision is recorded, and never allowed to throw.
+function notify($, text) {
+  try {
+    $.ui.toast(text, { timeoutMs: 8000 })
+  } catch (err) {
+    debug($, `Orchestra could not show a toast: ${err instanceof Error ? err.message : String(err)}`)
+  }
 }
 
 // Files the ledger already knows, read before and after a Bash call; any that changed is a
@@ -256,26 +293,22 @@ async function snapshotKnown($) {
   // Only while a performance is running, and only for files inside the project. Every Bash
   // call reads and hashes these twice, so tracking the whole machine would stall the session.
   if (!isPerformance(state)) return {}
-  const known = {}
-  for (const path of Object.keys(state.artifacts)) {
-    if (path.startsWith('.orchestra/performances/')) continue
-    if (path.startsWith('/') || path.split('/').includes('..')) continue
-    known[path] = await snapshot($, path)
-  }
-  return known
+  const paths = Object.keys(state.artifacts).filter((path) =>
+    !path.startsWith('.orchestra/performances/') && !path.startsWith('/') && !path.split('/').includes('..'))
+  const snaps = await Promise.all(paths.map((path) => snapshot($, path)))
+  return Object.fromEntries(paths.map((path, i) => [path, snaps[i]]))
 }
 
 async function attributeBash($, key, before, mark) {
   // `mark.overlapped` is read here, after the snapshots, not before them. Another loop's call
   // can start while the snapshots run, and that call can be what changed the file.
-  for (const [path, prev] of Object.entries(before)) {
-    const now = await snapshot($, path)
+  const pairs = await Promise.all(Object.entries(before).map(async ([path, prev]) => ({ path, prev, now: await snapshot($, path) })))
+  for (const { path, prev, now } of pairs) {
     if (!now.hash || now.hash === prev.hash) continue
     // A hash the ledger holds as its latest version was written by someone else and already
     // recorded. An older hash means the command reverted the file, which is a new version.
-    const versions = state.artifacts[path]?.versions || []
-    const latest = versions[versions.length - 1]
-    if (latest && latest.hash === now.hash) continue
+    const last = state.artifacts[path] && latest(state.artifacts[path])
+    if (last && last.hash === now.hash) continue
     await record($, { type: 'artifact.write', agent: key, path, hash: now.hash, via: 'bash', uncertain: mark.overlapped, ...lineDelta(prev.text, now.text) })
   }
 }
@@ -298,11 +331,21 @@ function mentionsIn(prompt) {
 export function register(on) {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | close', immediate: true })
-    cwd = await $.session.cwd()
-    sessionId = await $.session.id()
+    const dir = await $.session.cwd()
+    const id = await $.session.id()
+    // The paths, the state and the counters change together with no await in between, so a hook
+    // still running for the previous session cannot save its events into this session's files.
+    epoch += 1
+    cwd = dir
+    sessionId = id
     ledgerDir = `${cwd}/.orchestra/performances`
     ledgerBase = `${ledgerDir}/${sessionId}`
     codaFile = `${ledgerBase}-coda.md`
+    state = emptyState()
+    seq = 0
+    persisted = 0
+    lastText.clear()
+    Object.assign(view, { codaPath: null, held: null, selected: null })
     colorterm = (await $.env.get('COLORTERM')) || ''
     const theme = (await $.config.list()).find((row) => row.key === 'theme')?.value
     setColorMode(modeFor(theme, colorterm))
@@ -315,8 +358,6 @@ export function register(on) {
       seq = events[events.length - 1].seq
       persisted = seq
     } else {
-      state = emptyState()
-      seq = 0
       apply(state, { seq: ++seq, ts: await $.clock.now(), type: 'session.start', session: sessionId, cwd })
     }
     if (state.codaSeq) view.codaPath = relative(codaFile)
@@ -365,44 +406,62 @@ export function register(on) {
     let before = null
     let known = null
     let release = null
+    let refusal = null
+    let guardFrom = null
     inFlight.set(key, (inFlight.get(key) || 0) + 1)
-    // Any Bash call already running overlapped with this one, and this call overlapped with them.
-    for (const mark of bashRunning.values()) mark.overlapped = true
-    const mark = { overlapped: [...inFlight.entries()].some(([agent, n]) => agent !== key && n > 0) }
-    if (e.tool === 'Bash') bashRunning.set(key, mark)
+    // Any Bash call another loop is running overlapped with this one, and this call with it.
+    for (const other of bashRunning) if (other.loop !== key) other.overlapped = true
+    const mark = { loop: key, overlapped: [...inFlight.entries()].some(([agent, n]) => agent !== key && n > 0) }
+    if (e.tool === 'Bash') bashRunning.add(mark)
+    // Orchestra's own bookkeeping fails open: an error in it is logged and the tool still runs,
+    // and the tool's real result is returned. Only the tool's own error reaches the musician.
     try {
-      if (e.tool === 'Bash') known = await snapshotKnown($)
-      await record($, { type: 'tool.call', agent: key, tool: e.tool, target })
-      if (isWrite) {
-        release = await lockFile(target)
-        before = await snapshot($, e.file_path || e.notebook_path)
-        const refusal = await guardWrite($, e, key, target, before)
-        if (refusal) {
-          await record($, { type: 'tool.result', agent: key, tool: e.tool, target, ok: false, sentBack: true, error: 'sent back by Orchestra: stale base' })
-          return refusal
+      try {
+        if (e.tool === 'Bash') known = await snapshotKnown($)
+        await record($, { type: 'tool.call', agent: key, tool: e.tool, target })
+        if (isWrite) {
+          release = await lockFile(target)
+          before = await snapshot($, e.file_path || e.notebook_path)
+          guardFrom = seq
+          const guard = await guardWrite($, e, key, target, before)
+          if (guard.deny) refusal = { deny: guard.deny }
+          else before = guard.base
         }
+      } catch (err) {
+        // If the guard had found a conflict on this write and failed before the user's "Let it
+        // write" was recorded, the write is sent back rather than landing unasked or against
+        // the answer. The musician re-reads and tries again.
+        const held = guardFrom === null ? undefined : state.conflicts.filter((c) => c.agent === key && c.path === target && c.seq > guardFrom).at(-1)
+        if (held && held.choice !== 'overwrite') refusal = { deny: `Orchestra could not settle a conflict on ${target}. Read the file again and reapply your change on top of its current content.` }
+        debug($, `Orchestra skipped recording ${e.tool}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      if (refusal) {
+        await record($, { type: 'tool.result', agent: key, tool: e.tool, target, ok: false, sentBack: true, error: 'sent back by Orchestra: stale base' })
+          .catch((err) => debug($, `Orchestra could not record a send-back: ${err instanceof Error ? err.message : String(err)}`))
+        return refusal
       }
       const result = await next(e)
-      const ok = !(result && (result.isError || result.deny))
-      if (known) await attributeBash($, key, known, mark)
-      if (ok && isWrite) {
-        const after = await snapshot($, e.file_path || e.notebook_path)
-        if (after.hash) await record($, { type: 'artifact.write', agent: key, path: target, hash: after.hash, ...lineDelta(before?.text ?? null, after.text) })
-        if (after.text !== null) lastText.set(textKey(key, target), after.text)
+      try {
+        const ok = !(result && (result.isError || result.deny))
+        if (known) await attributeBash($, key, known, mark)
+        if (ok && isWrite) {
+          const after = await snapshot($, e.file_path || e.notebook_path)
+          if (after.hash) await record($, { type: 'artifact.write', agent: key, path: target, hash: after.hash, ...lineDelta(before?.text ?? null, after.text) })
+          if (after.text !== null) lastText.set(textKey(key, target), after.text)
+        }
+        if (ok && e.tool === 'Read' && e.file_path) {
+          const seen = await snapshot($, e.file_path)
+          if (seen.hash) await record($, { type: 'artifact.read', agent: key, path: target, hash: seen.hash })
+          if (seen.text !== null) lastText.set(textKey(key, target), seen.text)
+        }
+        await record($, { type: 'tool.result', agent: key, tool: e.tool, target, ok, error: ok ? undefined : short(result?.text || result?.deny, 200) })
+      } catch (err) {
+        debug($, `Orchestra skipped recording the result of ${e.tool}: ${err instanceof Error ? err.message : String(err)}`)
       }
-      if (ok && e.tool === 'Read' && e.file_path) {
-        const seen = await snapshot($, e.file_path)
-        if (seen.hash) await record($, { type: 'artifact.read', agent: key, path: target, hash: seen.hash })
-        if (seen.text !== null) lastText.set(textKey(key, target), seen.text)
-      }
-      await record($, { type: 'tool.result', agent: key, tool: e.tool, target, ok, error: ok ? undefined : short(result?.text || result?.deny, 200) })
       return result
-    } catch (err) {
-      $.ui.log(`Orchestra skipped recording ${e.tool}: ${err instanceof Error ? err.message : String(err)}`, { to: 'debug' })
-      throw err
     } finally {
       inFlight.set(key, Math.max(0, (inFlight.get(key) || 1) - 1))
-      if (bashRunning.get(key) === mark) bashRunning.delete(key)
+      bashRunning.delete(mark)
       if (release) release()
     }
   })

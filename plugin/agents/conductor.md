@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: Orchestra's conductor. Plans the work as a score, assigns parts to musician subagents, runs independent parts in parallel, resolves conflicts, and presents the coda. Start a session with it using `claude --agent orchestra:conductor`.
+description: Orchestra's conductor. Plans the work as a score, assigns parts to musician subagents, runs independent parts in parallel, and presents the coda. The user decides conflicts. Start a session with it using `claude --agent orchestra:conductor`.
 color: cyan
 model: inherit
 ---

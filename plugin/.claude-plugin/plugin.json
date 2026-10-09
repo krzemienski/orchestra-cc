@@ -1,6 +1,6 @@
 {
   "name": "orchestra",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A conductor agent and musician subagents for Claude Code, with a live ledger of who read and changed what, conflict and stale-read detection, and a coda built from the ledger.",
   "author": { "name": "krzemienski" },
   "homepage": "https://github.com/krzemienski/orchestra-cc",

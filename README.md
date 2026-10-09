@@ -82,7 +82,7 @@ Only observations are recorded:
 Everything else is **derived** from versions, never declared by the agents:
 
 - **Conflict**: a musician tries to write a file whose current version is not the one it last saw. Example: Trumpet read v0, Trumpet 2 wrote v1, and Trumpet now edits from v0. Orchestra holds the write and asks in Claude Code's own question dialog: *Let it write*, *Send it back to re-read*, or *Show both versions*, which draws the lines the other musician added and the held change directly above the question before asking again. Sending it back denies the edit and tells the musician to re-read and reapply its change. In a `claude -p` run nobody can answer, so the write is sent back.
-- **Stale read**: a musician produced other work after reading a version that someone has since replaced. It clears when that musician reads the current version.
+- **Stale read**: a musician produced other work after reading a version that someone has since replaced. It clears when that musician reads the current version. Revising the conductor's plan, `.orchestra/score.md`, never makes work stale.
 - **Handoff**: a musician read a version that another musician wrote.
 - **Coda**: written to `.orchestra/performances/<session-id>-coda.md` at the end of each conductor turn, from the ledger alone.
 
@@ -108,7 +108,7 @@ Its data is illustrative. The plugin in `plugin/` is the real integration.
 ## Limitations
 
 - Mod drawing appears only in the Claude Code terminal and the Desktop app's Code tab. In the VS Code extension, `claude -p` and cloud sessions, the ledger, conflict guard and coda still work, but nothing is drawn.
-- A change a musician makes with Bash (for example `sed -i`) to a file Orchestra already tracks is credited to that musician, marked "via Bash", and marked uncertain if another musician had a tool running at the same time. Files created by Bash are not recorded, so the musicians are told to create files with Write and Edit.
+- A change a musician makes with Bash (for example `sed -i`) to a file Orchestra already tracks is credited to that musician, marked "via Bash", and marked uncertain if another musician ran a tool that can change files (a shell command, a write tool or an MCP tool) at the same time, or had a command running in the background. A background command's own changes are found when Claude Code reports it finished, and credited to the musician who started it. Tools added by other plugins are not counted. Files created by Bash are not recorded, so the musicians are told to create files with Write and Edit.
 - A command that hides its own exit code (for example `npm test; echo $?`) is recorded as a success. The tester and conductor are instructed never to append anything to a command, but a model can still ignore that.
 - If one of Orchestra's own hooks fails, Claude Code skips it and the tool runs anyway (fail open), so Orchestra can never block your work. `claude plugin validate` reports this as `gating hook without .catch: tool.call`.
 - Progress is counted in measures (completed tool calls), not as a fraction of a known total, because Claude Code exposes no step plan for a subagent.

@@ -1,7 +1,7 @@
 // What Orchestra draws. Every function takes the element constructors the mod resolved
 // for the surface, the folded ledger state, and the pane's own view state.
 
-import { CONDUCTOR, artifactStatus, coda, counts, musicians, nameOf, roster } from './ledger.js'
+import { CONDUCTOR, artifactStatus, coda, codaSections, counts, hashLabel, musicians, nameOf, plural, roster, statusLine } from './ledger.js'
 import { paint } from './palette.js'
 
 export const GLYPH = { resting: '·', playing: '♪', waiting: '‖', done: '✓', failed: '✕' }
@@ -17,9 +17,51 @@ export const short = (text, n) => {
 }
 
 const line = (el, parts) => el.Text({ wrap: 'truncate-end', children: parts })
+// Blank rows, remembered so the pane's window can drop the ones that would end a tab.
+const blanks = new WeakSet()
+const blank = (el) => {
+  const row = el.Text({ children: [' '] })
+  blanks.add(row)
+  return row
+}
 const dim = (el, text) => el.Text({ dimColor: true, children: [text] })
 const tone = (el, token, text, bold = false) => el.Text({ color: paint(token), bold, children: [text] })
 const who = (el, m) => tone(el, m.color, m.name, true)
+
+// Word-wraps text into lines of at most `cols` characters, splitting a longer word.
+function wrapLines(text, cols) {
+  const lines = []
+  let cur = ''
+  for (const word of String(text ?? '').split(/\s+/).filter(Boolean)) {
+    if (cur && cur.length + 1 + word.length <= cols) {
+      cur += ` ${word}`
+      continue
+    }
+    if (cur) lines.push(cur)
+    cur = word
+    while (cur.length > cols) {
+      lines.push(cur.slice(0, cols))
+      cur = cur.slice(cols)
+    }
+  }
+  return cur || !lines.length ? [...lines, cur] : lines
+}
+
+// A paragraph as one Text per row, every row indented, so wrapped lines keep the indent; `hang`
+// indents the rows after the first a little more, so a wrapped item does not read as a new one.
+const para = (el, text, indent, width, props = {}, hang = '') => wrapLines(text, Math.max(10, width - indent.length - hang.length))
+  .map((l, i) => el.Text({ ...props, wrap: 'truncate-end', children: [`${indent}${i ? hang : ''}${l}`] }))
+
+// Short items laid out on rows of at most `cols` characters, never split inside an item.
+const wrapItems = (items, cols) => items.reduce((rows, item) => {
+  const last = rows[rows.length - 1]
+  if (last && last.length + 2 + item.length <= cols) rows[rows.length - 1] = `${last}  ${item}`
+  else rows.push(item)
+  return rows
+}, /** @type {string[]} */ ([]))
+
+const LEGEND = ['○ read', '← used another\'s work', '● write', '· tool', '◆ assigned', '✓ done', '✕ failed', '‼ conflict', '⚠ stale', '? you decided']
+
 const glyphOf = (el, m) => (STATE_TOKEN[m.state] ? tone(el, STATE_TOKEN[m.state], GLYPH[m.state]) : el.Text({ children: [GLYPH[m.state]] }))
 
 export function band(el, state, width) {
@@ -29,7 +71,7 @@ export function band(el, state, width) {
   }))
   const c = counts(state)
   const alerts = [
-    c.openConflicts ? tone(el, 'danger', `‼ ${c.openConflicts} conflict`, true) : null,
+    c.openConflicts ? tone(el, 'danger', `‼ ${plural(c.openConflicts, 'conflict')}`, true) : null,
     c.openStale ? tone(el, 'warn', `⚠ ${c.openStale} stale`) : null,
   ].filter(Boolean)
   return el.Box({
@@ -38,16 +80,52 @@ export function band(el, state, width) {
   })
 }
 
-export function pane(el, state, view, width) {
-  const tabs = el.Box({
-    flexDirection: 'row', columnGap: 3,
-    children: TABS.map(([id, label], i) => el.Button({
-      key: `tab-${id}`, label, hotkey: String(i + 1), plain: true, dimColor: view.tab !== id,
-      onPress: () => view.setTab(id),
-    })),
-  })
+const HEADER_ROWS = 2
+
+export function pane(el, state, view, width, bodyRows) {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
-  return el.Box({ flexDirection: 'column', width, children: [tabs, el.Text({ children: [' '] }), ...render(el, state, view, width)] })
+  const body = render(el, state, view, width)
+  return el.Box({ flexDirection: 'column', width, children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows)] })
+}
+
+const tabBar = (el, view) => el.Box({
+  flexDirection: 'row', columnGap: 2,
+  children: TABS.map(([id, label], i) => el.Box({ flexDirection: 'row', children: [
+    view.tab === id ? tone(el, 'conductor', '▸', true) : el.Text({ children: [' '] }),
+    el.Button({ key: `tab-${id}`, label, hotkey: String(i + 1), plain: true, dimColor: view.tab !== id, onPress: () => view.setTab(id) }),
+  ] })),
+})
+
+// The pane draws its own window under the tab bar, so the tabs never scroll away; every
+// row of a tab is one element, so a slice of them is exactly the rows shown. The tree is
+// one row taller than the window: the engine raises `ui.scroll` for the arrows only while
+// it has a row to scroll, and the pane's hook keeps it from moving, so that row never shows.
+// Without `bodyRows` the whole tab is drawn and the engine scrolls it.
+function paneWindow(el, view, rows, bodyRows) {
+  let end = rows.length
+  while (end > 1 && blanks.has(rows[end - 1])) end -= 1
+  const body = rows.slice(0, end)
+  if (view.windowTab !== view.tab) Object.assign(view, { windowTab: view.tab, offset: 0 })
+  const shown = Math.max(1, (bodyRows || 0) - HEADER_ROWS - 1)
+  view.maxOffset = bodyRows && body.length > shown + 1 ? body.length - shown : 0
+  view.page = shown
+  view.offset = Math.min(view.offset || 0, view.maxOffset)
+  if (!view.maxOffset) return body
+  const below = body.length - view.offset - shown
+  const where = [view.offset ? `↑ ${view.offset} more above` : null, below ? `↓ ${below} more below` : 'end'].filter(Boolean)
+  return [...body.slice(view.offset, view.offset + shown), dim(el, `${where.join(' · ')} (↑↓ to scroll)`), blank(el)]
+}
+
+// Moves the pane's window for a `ui.scroll` hook on the pane. The engine sizes Home and End
+// (`contentRows`) and the page keys (`bodyRows`) by the tree it was given, not by the tab.
+/** @param {{ by: number, bodyRows: number, contentRows: number }} e the `ui.scroll` input */
+export function scrollPane(view, e) {
+  if (!e.by) return false
+  const rows = Math.abs(e.by) >= e.contentRows ? Infinity : Math.abs(e.by) === e.bodyRows ? view.page : Math.abs(e.by)
+  const next = Math.min(Math.max(0, (view.offset || 0) + Math.sign(e.by) * rows), view.maxOffset || 0)
+  if (next === (view.offset || 0)) return false
+  view.offset = next
+  return true
 }
 
 const detailsButton = (el, view, type, id) => el.Button({
@@ -58,24 +136,23 @@ const detailsButton = (el, view, type, id) => el.Button({
 
 function ensemble(el, state, view, width) {
   const c = counts(state)
-  const rows = roster(state).map((key) => {
-    const m = state.musicians[key]
-    const activity = m.tool ? `${m.tool.tool} ${m.tool.target}` : m.part || (key === CONDUCTOR ? 'Coordinating the ensemble' : m.role)
-    const stale = state.stale.some((s) => s.agent === key && !s.cleared)
-    const open = view.selected?.type === 'musician' && view.selected.id === key
-    return el.Box({
-      key: `seat-${key}`, flexDirection: 'column', marginBottom: 1,
-      children: [
-        el.Box({ flexDirection: 'row', columnGap: 1, children: [
-          who(el, m), dim(el, `${m.role} ·`), glyphOf(el, m), dim(el, m.state), detailsButton(el, view, 'musician', key),
-        ] }),
-        line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
-        key === CONDUCTOR ? null : line(el, [`  ${m.measures} measures · ${m.reads} reads · ${m.writes} writes`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
-        ...(open ? musicianDetail(el, state, key, width) : []),
-      ].filter(Boolean),
-    })
-  })
-  return [line(el, [`${c.playing} playing in parallel · ${c.done} done`]), el.Text({ children: [' '] }), ...rows]
+  return [line(el, [`${c.playing} playing · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`]), blank(el), ...roster(state).flatMap((key) => seat(el, state, view, key, width))]
+}
+
+function seat(el, state, view, key, width) {
+  const m = state.musicians[key]
+  const activity = m.tool ? `${m.tool.tool} ${m.tool.target}` : m.part || (key === CONDUCTOR ? 'Coordinating the ensemble' : m.role)
+  const stale = state.stale.some((s) => s.agent === key && !s.cleared)
+  const open = view.selected?.type === 'musician' && view.selected.id === key
+  return [
+    el.Box({ key: `seat-${key}`, flexDirection: 'row', columnGap: 1, children: [
+      who(el, m), dim(el, m.role), glyphOf(el, m), dim(el, m.state), detailsButton(el, view, 'musician', key),
+    ] }),
+    line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
+    key === CONDUCTOR ? null : line(el, [`  ${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
+    ...(open ? musicianDetail(el, state, key, width) : []),
+    blank(el),
+  ].filter(Boolean)
 }
 
 function musicianDetail(el, state, key, width) {
@@ -86,11 +163,11 @@ function musicianDetail(el, state, key, width) {
   })
   return [
     dim(el, `    ${m.name} · ${m.type}`),
-    m.prompt ? el.Text({ wrap: 'wrap', dimColor: true, children: [`    Part: ${short(m.prompt, 300)}`] }) : null,
+    ...(m.prompt ? para(el, `Part: ${short(m.prompt, 300)}`, '    ', width, { dimColor: true }) : []),
     el.Text({ children: ['    Versions it has seen:'] }),
     ...(seen.length ? seen : [dim(el, '      none yet')]),
-    m.answer ? el.Text({ wrap: 'wrap', dimColor: true, children: [`    Answer: ${short(m.answer, 400)}`] }) : null,
-  ].filter(Boolean)
+    ...(m.answer ? para(el, `Answer: ${short(m.answer, 400)}`, '    ', width, { dimColor: true }) : []),
+  ]
 }
 
 // One staff per musician, the newest events on the right; glyphs coloured by meaning.
@@ -140,8 +217,8 @@ function score(el, state, view, width) {
   return [
     dim(el, `Events ${first}–${lastSeq} of the ledger, newest on the right`),
     ...lanes,
-    el.Text({ children: [' '] }),
-    el.Text({ dimColor: true, wrap: 'wrap', children: ['○ read  ← used another\'s work  ● write  · tool  ◆ assigned  ✓ done  ✕ failed  ‼ conflict  ⚠ stale  ? you decided'] }),
+    blank(el),
+    ...wrapItems(LEGEND, Math.max(10, width)).map((l) => dim(el, l)),
   ]
 }
 
@@ -150,19 +227,20 @@ const lastSeq = (a) => Math.max(0, ...a.versions.map((v) => v.seq), ...a.reads.m
 function artifacts(el, state, view, width) {
   const list = Object.values(state.artifacts).sort((a, b) => lastSeq(b) - lastSeq(a))
   if (!list.length) return [dim(el, 'No artifacts touched yet.')]
-  return list.map((a) => {
+  return list.flatMap((a) => {
     const status = artifactStatus(state, a.path)
     const authors = a.versions.filter((v) => v.agent !== 'repo').map((v) => nameOf(state, v.agent))
     const open = view.selected?.type === 'artifact' && view.selected.id === a.path
-    return el.Box({ key: `art-${a.path}`, flexDirection: 'column', marginBottom: 1, children: [
-      el.Box({ flexDirection: 'row', columnGap: 1, children: [
+    return [
+      el.Box({ key: `art-${a.path}`, flexDirection: 'row', columnGap: 1, children: [
         el.Text({ wrap: 'truncate-end', children: [short(a.path, width - 26)] }),
         status === 'conflict' ? tone(el, 'danger', 'conflict', true) : status === 'stale' ? tone(el, 'warn', 'stale') : dim(el, `v${a.versions.length - 1}`),
         detailsButton(el, view, 'artifact', a.path),
       ] }),
-      line(el, [dim(el, authors.length ? `  written by ${authors.join(' → ')} · ${a.reads.length} reads` : `  read only · ${a.reads.length} reads`)]),
+      line(el, [dim(el, authors.length ? `  written by ${authors.join(' → ')} · ${plural(a.reads.length, 'read')}` : `  read only · ${plural(a.reads.length, 'read')}`)]),
       ...(open ? artifactDetail(el, state, view, a.path, width) : []),
-    ] })
+      blank(el),
+    ]
   })
 }
 
@@ -171,9 +249,9 @@ function artifactDetail(el, state, view, path, width) {
   const versions = a.versions.map((v) => line(el, [
     `    v${v.v} ${v.agent === 'repo' ? 'as first seen' : `by ${nameOf(state, v.agent)}`}`,
     v.base !== null && v.base !== undefined ? ` from v${v.base}` : '',
-    v.agent === 'repo' || v.agent === 'outside' ? '' : ` +${v.added} −${v.removed}`,
+    v.agent === 'repo' || v.agent === 'outside' ? '' : v.unchecked || v.added === undefined ? ' lines unknown' : ` +${v.added} −${v.removed}`,
     v.via === 'bash' ? dim(el, v.uncertain ? ' via Bash, attribution uncertain' : ' via Bash') : '',
-    dim(el, `  sha256:${v.hash.slice(0, 12)}`),
+    dim(el, `  ${hashLabel(v.hash)}`),
     v.base !== null && v.base !== undefined && v.base < v.v - 1 ? tone(el, 'danger', ` skipped v${v.v - 1}`) : '',
   ]))
   const reads = a.reads.slice(-READS_SHOWN).map((r) => dim(el, `    ${nameOf(state, r.agent)} read v${r.v} at event ${r.seq}`))
@@ -181,7 +259,7 @@ function artifactDetail(el, state, view, path, width) {
     c.resolved ? tone(el, 'ok', '    ✓ ') : tone(el, 'danger', '    ‼ '),
     `${nameOf(state, c.agent)} wrote from v${c.base ?? '-'} over ${nameOf(state, c.against)}'s v${c.current}${c.resolved ? ` · ${c.choice}` : ' · open'}`,
   ]))
-  const held = view.held && view.held.path === path ? [el.Text({ children: [' '] }), ...heldWrite(el, view.held, width)] : []
+  const held = view.held && view.held.path === path ? [blank(el), ...heldWrite(el, view.held, width)] : []
   return [
     el.Text({ children: ['    Versions:'] }), ...versions,
     el.Text({ children: ['    Reads:'] }), ...(reads.length ? reads : [dim(el, '      none')]),
@@ -192,17 +270,24 @@ function artifactDetail(el, state, view, path, width) {
 
 // Shown while a write is held: the file as it is now, beside what the writer is about to do.
 // `lines` caps each side; above the question dialog Claude Code allows at most 12 rows.
+// Every row is cut to one line, so the rows drawn are exactly the rows counted.
 export function heldWrite(el, held, width, lines = HELD_LINES) {
-  const clip = (items) => items.filter((l) => l.trim()).slice(0, lines).map((l) => short(l, width - 8))
+  const clip = (items) => items.filter((l) => l.trim()).slice(0, lines)
+  // Cut to one row, keeping the indentation the file's own lines have.
+  const cut = (text, n) => {
+    const t = String(text).replace(/\t/g, '  ')
+    return t.length > n ? `${t.slice(0, Math.max(1, n - 1))}…` : t
+  }
+  const row = (key, text, props = {}) => el.Text({ key, ...props, wrap: 'truncate-end', children: [cut(text, width - 2)] })
   const sinceSeen = held.changed !== null
   const theirs = sinceSeen ? held.changed : String(held.currentText ?? '').split('\n')
   const seen = held.base === null ? `${held.writer} never read it` : `${held.writer} saw v${held.base}`
   return [
-    tone(el, 'warn', `Held write by ${held.writer} (${held.tool}) on ${short(held.path, width - 30)}`, true),
-    dim(el, sinceSeen ? `Added by ${held.against} since ${seen} (now v${held.current}):` : `Now v${held.current} by ${held.against}:`),
-    ...clip(theirs.length ? theirs : ['(no lines added; lines were only removed)']).map((l, i) => el.Text({ key: `cur${i}`, children: [`  ${sinceSeen ? '+ ' : ''}${l}`] })),
-    dim(el, `${held.writer} wants to ${held.tool === 'Write' ? 'write' : 'replace'}:`),
-    ...clip(String(held.proposed ?? '').split('\n')).map((l, i) => el.Text({ key: `new${i}`, color: paint('warn'), children: [`  ${l}`] })),
+    row('held', `Held write by ${held.writer} (${held.tool}) on ${held.path}`, { color: paint('warn'), bold: true }),
+    row('since', sinceSeen ? `v${held.current} by ${held.against}, added since ${seen}:` : `v${held.current} by ${held.against}:`, { dimColor: true }),
+    ...clip(theirs.length ? theirs : ['(no lines added; lines were only removed)']).map((l, i) => row(`cur${i}`, `  ${sinceSeen ? '+ ' : ''}${l}`)),
+    row('wants', `${held.writer} wants to ${held.tool === 'Write' ? 'write' : 'change'}:`, { dimColor: true }),
+    ...clip(String(held.proposed ?? '').split('\n')).map((l, i) => row(`new${i}`, `  ${l}`, { color: paint('warn') })),
   ]
 }
 
@@ -210,17 +295,14 @@ function codaTab(el, state, view, width) {
   const c = coda(state)
   const section = (title, items) => [
     el.Text({ bold: true, children: [title] }),
-    ...(items.length ? items.map((t, i) => el.Text({ key: `${title}${i}`, wrap: 'wrap', children: [`  ${t}`] })) : [dim(el, '  none')]),
+    ...(items.length ? items.flatMap((t) => para(el, `• ${t}`, '  ', width, {}, '  ')) : [dim(el, '  • none')]),
   ]
   return [
-    el.Text({ wrap: 'wrap', children: [`Task: ${short(c.task || 'not recorded', width * 3)}`] }),
-    dim(el, view.codaPath ? `Written to ${view.codaPath}` : 'The coda file is written when the conductor\'s turn ends.'),
-    el.Text({ children: [' '] }),
-    ...section('Who contributed what', c.contributions.map((x) => `${x.name}: ${x.reads} reads, ${x.writes} writes, +${x.added} −${x.removed}`)),
-    ...section('Artifacts changed', c.changed.map((a) => `${a.path} · ${a.versions} new · ${a.authors.join(', ')}`)),
-    ...section('Handoffs', c.handoffs),
-    ...section('Conflicts', c.conflicts.map((x) => x.text)),
-    ...section('Failures', c.failures),
-    ...section('Stale reads', c.stale),
+    ...para(el, `Task: ${short(c.task || 'not recorded', width * 3)}`, '', width),
+    ...(c.requests?.length ? para(el, `Later requests: ${short(c.requests.join(' | '), width * 3)}`, '', width) : []),
+    ...para(el, `Status: ${statusLine(state)}`, '', width),
+    ...para(el, view.codaPath ? `Written to ${view.codaPath}` : 'The coda file is written when the conductor\'s turn ends.', '', width, { dimColor: true }),
+    blank(el),
+    ...codaSections(state, c).flatMap(([title, items]) => section(title, items)),
   ]
 }

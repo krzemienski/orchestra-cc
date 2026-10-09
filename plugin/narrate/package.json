@@ -1,0 +1,9 @@
+{
+  "name": "orchestra-narrate",
+  "private": true,
+  "type": "module",
+  "description": "Writes the optional narrated coda for Orchestra with the Claude Agent SDK",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.296"
+  }
+}

@@ -45,6 +45,18 @@ Installing the plugin does not change your other sessions' main agent. The mod r
 | `/orchestra ledger` | Prints the ledger's path, event count and status |
 | `/orchestra close` | Closes the pane |
 
+### Narrated coda (optional)
+
+Every sentence of the coda comes from the ledger. If you also want it told as prose, turn on **Narrate the coda** (`narrateCoda`) for the plugin in `/config`. When the conductor's turn ends with every part settled, Claude retells the coda in a second file beside it, `.orchestra/performances/<session>-coda-narrated.md`, and the Coda tab shows the retelling under the coda. The coda stays the record: the narration may use only what the coda states.
+
+The narration uses the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), which the plugin does not install for you. Install it once in the plugin's `narrate` folder:
+
+```sh
+npm install --prefix <plugin directory>/narrate
+```
+
+Each narration is one call to `claude-opus-5-5`, made with your Claude Code login, so it is billed like any other request. It runs in a separate Claude Code process with no tools, settings, plugins or MCP servers, and it never holds up your turn. An unchanged coda is not narrated again. If the narration fails, Orchestra says why in a toast, and the coda is not affected.
+
 ## What you see
 
 - **The band above the prompt** lists every musician with a state glyph and the measures played so far:
@@ -57,6 +69,7 @@ Installing the plugin does not change your other sessions' main agent. The mod r
   - **Score**: one staff per musician, newest events on the right. `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
   - **Artifacts**: every file touched, with its versions. Select one to see each version's author, base version, line delta and SHA-256, who read which version, and its conflicts.
   - **Coda**: who contributed what, artifacts changed, handoffs, conflicts, failures and stale reads, all computed from the ledger.
+- **The narrated coda**, if you turn it on (below): Claude's retelling of the coda, under "Narrated by Claude" at the end of the Coda tab.
 - **The status line** under the prompt, for example `Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 conflict`.
 - **Toasts** for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
 - **The spinner** gains `· 2 musicians playing`.

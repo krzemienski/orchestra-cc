@@ -1,10 +1,19 @@
 {
   "name": "orchestra",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A conductor agent and musician subagents for Claude Code, with a live ledger of who read and changed what, conflict and stale-read detection, and a coda built from the ledger.",
   "author": { "name": "krzemienski" },
   "homepage": "https://github.com/krzemienski/orchestra-cc",
   "repository": "https://github.com/krzemienski/orchestra-cc",
   "license": "MIT",
-  "keywords": ["subagents", "orchestration", "mod", "ledger", "provenance"]
+  "keywords": ["subagents", "orchestration", "mod", "ledger", "provenance"],
+  "userConfig": {
+    "narrateCoda": {
+      "type": "boolean",
+      "title": "Narrate the coda",
+      "description": "When the conductor's turn ends with every part settled, Claude retells the coda as prose in a second file beside it. Each narration is one Claude call billed to your login, and needs `npm install` in the plugin's narrate folder.",
+      "required": false,
+      "default": false
+    }
+  }
 }

@@ -160,6 +160,19 @@ A reviewer read the 0.1.3 diff and raised ten findings, none reproduced. Each wa
 
 **Regression checks.** All 319 ledgers under `e2e-evidence/` fold to identical codas with and without these fixes. `claude plugin validate ./plugin` passes and `tsc -p plugin --noEmit` exits 0. Evidence: `e2e-evidence/review-fixes-20261009-184208/`.
 
+## Version 0.1.4: the narrated coda
+
+An optional setting, `narrateCoda` (off by default), has Claude retell the coda as prose through the Claude Agent SDK (`plugin/narrate/`), in a file beside it and at the end of the Coda tab. Checked on 2026-10-09 with Claude Code 2.1.296, an isolated config and `--plugin-dir ./plugin`.
+
+| Check | Result |
+| --- | --- |
+| Narration on, two-part performance in tmux | The coda was written, then `<session>-coda-narrated.md` about 4 s later (`node exited 0 in 4337ms`), and the toast `narrated coda ready in the Coda tab`. Every count, path, hash and author in the narration matches the coda. The Coda tab shows it under "Narrated by Claude" |
+| Unchanged coda at the next end of turn | Not narrated again: one helper run |
+| Helper folder missing | Toast: `could not narrate the coda (its dependency is not installed: run npm install --prefix …/plugin/narrate)`; the coda was written as usual. With the folder back, the next turn narrated (5.7 s) |
+| Setting off (headless `claude -p`) | Coda only: no narrated file, no helper process |
+
+Not checked: changing the setting through the `/config` screen (the runs set it in `settings.json`), and a narration that times out or meets an API error. Evidence: `e2e-evidence/narrate-coda-20261009-181759/`.
+
 ## Defects found by verification and fixed
 
 1. Every musician was named `Guest (part.assigned)`: the spawn event's subagent type was overwritten by the event's own `type` field.

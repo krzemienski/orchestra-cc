@@ -6,6 +6,7 @@
 import { CONDUCTOR, instrumentDef, apply, authorOf, closeLeftOpen, codaMarkdown, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { GLYPH, TABS, band, heldWrite, pane, scrollPane } from './views.js'
 import { colorMode, modeFor, paint, setColorMode } from './palette.js'
+import { FRAME_MS, activity, note } from './motion.js'
 
 const PANE = 'orchestra'
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -42,9 +43,12 @@ let ledgerDir = ''
 let sessionId = ''
 let codaFile = ''
 let colorterm = ''
+let term = ''
 const THEME_RECHECK_MS = 2000
+const SPINNER_SHOWN = 2
 // One narration: the Agent SDK starts a Claude Code process and makes one model call.
 const NARRATE_TIMEOUT_MS = 180_000
+const VOICE_TIMEOUT_MS = 120_000
 let seq = 0
 // The highest sequence number already written to a segment file.
 let persisted = 0
@@ -122,13 +126,20 @@ const endedTaskLoops = new Map()
 /** @type {{ tab: string, selected: any }|null} */
 let restoreTo = null
 let codaWrites = Promise.resolve()
-let stopThemeRecheck = () => {}
+/** @type {{ cancel: () => void } | null} */
+let themeTimer = null
 // The narrated coda (the narrateCoda option): Claude's retelling of the coda, in a file beside it.
 // The coda text last sent to be narrated, so an unchanged coda is not narrated twice, and the
 // number of the latest narration, so an older one that finishes late is dropped.
 let narrateCoda = false
 let narratedText = ''
 let narrations = 0
+// The spoken coda (the voiceCoda option): ElevenLabs reads the narration, or the coda when there is
+// none, into an MP3 beside the coda, through the voice.mjs sidecar. Same dedupe as the narration.
+/** @type {{ on: boolean, voiceId: string, language: string, model: string }} */
+let voice = { on: false, voiceId: '', language: 'en', model: '' }
+let spokenText = ''
+let speakings = 0
 // Musicians the conductor sent more work after their part ended, until that part.resumed is recorded.
 const resumedByMessage = new Set()
 // Write tools let through and still landing: whether another loop's shell command ran meanwhile,
@@ -157,10 +168,35 @@ const textKey = (agent, path) => `${agent}\u0000${path}`
  *   held: { path: string, writer: string, against: string, tool: string, current: number, base: number|null,
  *     changed: string[]|null, currentText: string|null, proposed: string }|null,
  *   narration: { status: 'writing'|'done'|'failed', path: string, text: string }|null,
- *   offset?: number, setTab: (tab: string) => void, select: (type: string, id: string) => void }} View
+ *   voice?: { status: 'speaking'|'done'|'failed', path: string, detail: string }|null,
+ *   offset?: number, frame: number, live: boolean, now: number, setTab: (tab: string) => void, select: (type: string, id: string) => void }} View
  */
 /** @type {View} */
-const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, narration: null, setTab: () => {}, select: () => {} }
+const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, narration: null, frame: 0, live: false, now: 0, setTab: () => {}, select: () => {} }
+
+// The frame timer behind motion.js: it runs only in an interactive session and only while a
+// musician is playing or waiting, and stops itself when nobody is, so an idle session never redraws.
+let interactive = false
+/** @type {{ cancel: () => void } | null} */
+let motionTimer = null
+const moving = () => interactive && musicians(state).some((m) => m.state === 'playing' || m.state === 'waiting')
+function syncMotion($) {
+  if (moving() === Boolean(motionTimer)) return
+  if (motionTimer) {
+    motionTimer.cancel()
+    motionTimer = null
+    view.live = false
+    return
+  }
+  view.live = true
+  motionTimer = $.clock.every(FRAME_MS, () => {
+    if (!moving()) return syncMotion($)
+    view.frame += 1
+    // The clock moves the durations shown beside each open tool call; a failed read keeps the last.
+    $.clock.now().then((t) => { view.now = t }, () => {})
+    $.ui.invalidate('ui.render')
+  })
+}
 
 const segmentOf = (n) => Math.ceil(n / SEGMENT_EVENTS)
 const segmentFile = (n) => `${ledgerBase}.${String(n).padStart(4, '0')}.jsonl`
@@ -380,6 +416,8 @@ async function recordIn(at, $, fields, quiet = false) {
   const before = { stale: state.stale.length, handoffs: state.handoffs.length, conflicts: state.conflicts.length, failures: state.toolFailures.length }
   /** @type {any} */
   let event = null
+  /** @type {any[]} */
+  const applied = []
   for (const x of Array.isArray(built) ? built : [built]) {
     if (!x) continue
     // Once the session has ended nothing more is recorded into it (a killed command's result
@@ -398,15 +436,18 @@ async function recordIn(at, $, fields, quiet = false) {
     }
     seq += 1
     event = next
+    applied.push(next)
   }
   if (!event) return null
   // Once the events are applied they stand. Telling the user about them must not undo a decision
   // the caller is about to act on, so a failed toast or redraw is only logged.
   try {
-    if (!quiet) toastNews($, before)
+    view.now = ts
+    if (!quiet) toastNews($, before, applied)
     // Not awaited: waiting on the save chain would spend this hook's time budget.
     persist($).catch((err) => debug($, `Orchestra could not queue a save: ${err instanceof Error ? err.message : String(err)}`))
     $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
+    syncMotion($)
     $.ui.invalidate('ui.render')
   } catch (err) {
     debug($, `Orchestra could not show event ${event.seq}: ${err instanceof Error ? err.message : String(err)}`)
@@ -417,7 +458,16 @@ async function recordIn(at, $, fields, quiet = false) {
 const record = ($, fields, quiet = false) => recordIn(epoch, $, fields, quiet)
 
 // Toasts for what an event changed: stale reads, handoffs and failures.
-function toastNews($, before) {
+function toastNews($, before, applied = []) {
+  // A musician joining when the conductor assigns its part, and resting when the part ends, with
+  // what the ledger recorded for it.
+  for (const e of applied) {
+    const m = e.agent ? state.musicians[e.agent] : null
+    if (!m || m.key === CONDUCTOR) continue
+    if (e.type === 'part.assigned') $.ui.toast(`Orchestra · ${m.name} joins the ensemble as ${m.role}`)
+    else if (e.type === 'part.done') $.ui.toast(`Orchestra · ${m.name} rests: ${plural(m.measures, 'measure')}, ${plural(m.reads, 'read')}, ${plural(m.writes, 'write')}`)
+    else if (e.type === 'part.failed') $.ui.toast(`Orchestra · ${m.name} stopped: ${e.reason}`, { timeoutMs: 6000 })
+  }
   for (const s of state.stale.slice(before.stale)) {
     $.ui.toast(`Orchestra · stale read: ${nameOf(state, s.agent)} worked from v${s.readV} of ${s.path}; ${nameOf(state, s.writer)} wrote v${s.currentV}`, { timeoutMs: 6000 })
   }
@@ -449,6 +499,7 @@ async function writeCoda($, announce = false, at = epoch) {
       $.ui.toast('Orchestra · coda ready: /orchestra and open the Coda tab', { timeoutMs: 6000 })
       // Not awaited: a narration takes seconds, and later coda writes must not wait on it.
       if (narrateCoda) narrate($, text, file, at).catch((err) => warn($, 'narrate', `could not narrate the coda (${err instanceof Error ? err.message : String(err)})`))
+      else if (voice.on) speakCoda($, spokenFrom(text), file, at).catch((err) => warn($, 'voice', `could not speak the coda (${err instanceof Error ? err.message : String(err)})`))
     }
   }).catch((err) => warn($, 'coda', `could not write the coda to ${relative(file)} (${err instanceof Error ? err.message : String(err)})`))
   await recordIn(at, $, { type: 'coda', path: relative(file), settled })
@@ -496,6 +547,58 @@ async function narrate($, coda, codaPath, at) {
   if (!current()) return
   show('done', text)
   $.ui.toast('Orchestra · narrated coda ready in the Coda tab', { timeoutMs: 6000 })
+  if (voice.on) await speakCoda($, text, codaPath, at)
+}
+
+// The coda as plain sentences for a voice: no Markdown marks, no ledger path or hashes.
+function spokenFrom(markdown) {
+  return markdown.split('\n')
+    .filter((l) => !/^Ledger: /.test(l))
+    .map((l) => l.replace(/^#+\s*/, '').replace(/^- /, '').replace(/`/g, '').replace(/\s*sha256:[0-9a-f]+/g, ''))
+    .filter((l) => l.trim() && l.trim() !== 'none')
+    .map((l) => (/[.!?:]$/.test(l.trim()) ? l.trim() : `${l.trim()}.`))
+    .join('\n')
+}
+
+// Has ElevenLabs read `text` into `<session>-coda.mp3` beside the coda, through the voice.mjs
+// sidecar: a fixed command line, the request on standard input. The sidecar reads the API key from
+// the environment Claude Code was started in; Orchestra never reads it. A failure is shown and
+// nothing else changes.
+async function speakCoda($, text, codaPath, at) {
+  if (at !== epoch || !text.trim() || text === spokenText) return
+  spokenText = text
+  const run = ++speakings
+  const current = () => at === epoch && run === speakings
+  const out = codaPath.replace(/-coda\.md$/, '-coda.mp3')
+  const show = (status, detail) => {
+    view.voice = { status, path: relative(out), detail }
+    $.ui.invalidate('ui.render')
+  }
+  show('speaking', '')
+  let res
+  try {
+    res = await $.process.run(['node', `${$.plugin.root}/narrate/voice.mjs`], {
+      stdin: JSON.stringify({ text, out, voiceId: voice.voiceId, language: voice.language, model: voice.model || undefined }),
+      timeoutMs: VOICE_TIMEOUT_MS,
+    })
+  } catch (err) {
+    res = { exitCode: 1, stdout: '', stderr: err instanceof Error ? err.message : String(err) }
+  }
+  if (!current()) return
+  if (res.exitCode !== 0) {
+    spokenText = ''
+    const reason = res.stderr.trim().split('\n').pop() || `the voice helper exited with code ${res.exitCode}`
+    show('failed', reason)
+    warn($, 'voice', `could not speak the coda (${reason})`)
+    return
+  }
+  let info = {}
+  try {
+    info = JSON.parse(res.stdout.trim().split('\n').pop() || '{}')
+  } catch {}
+  const detail = `${info.voice || 'voice'} · ${voice.language}${info.verified ? ', verified' : ', no language data for this voice'}${info.truncated ? ' · cut to fit the model limit' : ''}`
+  show('done', detail)
+  $.ui.toast(`Orchestra · spoken coda ready: ${relative(out)}`, { timeoutMs: 6000 })
 }
 
 // Lines in `now` that are not in `then`, counted as a multiset.
@@ -1033,7 +1136,8 @@ async function startSession($) {
   lastText.clear()
   restoreTo = null
   narratedText = ''
-  Object.assign(view, { codaPath: null, held: null, narration: null, selected: null, offset: 0 })
+  spokenText = ''
+  Object.assign(view, { codaPath: null, held: null, narration: null, voice: null, selected: null, offset: 0 })
   state = folded
   seq = events.length ? events[events.length - 1].seq : 0
   persisted = seq
@@ -1063,8 +1167,9 @@ function retireSession($) {
   persisted = 0
   restoreTo = null
   narratedText = ''
+  spokenText = ''
   askingFiles.clear()
-  Object.assign(view, { codaPath: null, held: null, narration: null, selected: null, offset: 0 })
+  Object.assign(view, { codaPath: null, held: null, narration: null, voice: null, selected: null, offset: 0 })
   $.ui.status(undefined)
   $.ui.invalidate('ui.render')
 }
@@ -1203,7 +1308,7 @@ function withContext(e, before, result) {
 // /theme does not raise config.set, so a timer re-reads the theme every THEME_RECHECK_MS.
 async function refreshTheme($) {
   const theme = (await $.config.list()).find((row) => row.key === 'theme')?.value
-  const next = modeFor(theme, colorterm)
+  const next = modeFor(theme, colorterm, term)
   if (next === colorMode()) return
   setColorMode(next)
   $.ui.invalidate('ui.render')
@@ -1217,16 +1322,24 @@ function mentionsIn(prompt) {
 
 export function register(on, options) {
   narrateCoda = options?.narrateCoda === true
+  voice = {
+    on: options?.voiceCoda === true,
+    voiceId: String(options?.voiceId || ''),
+    language: String(options?.voiceLanguage || 'en').toLowerCase(),
+    model: String(options?.voiceModel || ''),
+  }
   on('session.start', async ($, e, next) => {
+    interactive = e.isInteractive === true
     await safely($, 'set up its command and theme', async () => {
-      await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | close', immediate: true })
+      await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | voice | close', immediate: true })
       colorterm = (await $.env.get('COLORTERM')) || ''
+      term = (await $.env.get('TERM')) || ''
       const theme = (await $.config.list()).find((row) => row.key === 'theme')?.value
-      setColorMode(modeFor(theme, colorterm))
+      setColorMode(modeFor(theme, colorterm, term))
       let themeFailed = false
       // session.start fires again on /clear, resume and compaction: one recheck timer, not one each.
-      stopThemeRecheck()
-      stopThemeRecheck = $.clock.every(THEME_RECHECK_MS, () => {
+      themeTimer?.cancel()
+      themeTimer = $.clock.every(THEME_RECHECK_MS, () => {
         refreshTheme($).then(() => { themeFailed = false }).catch((err) => {
           if (!themeFailed) debug($, `Orchestra could not re-read the theme: ${err instanceof Error ? err.message : String(err)}`)
           themeFailed = true
@@ -1293,7 +1406,7 @@ export function register(on, options) {
 
   on('config.set', { key: 'theme' }, async ($, e, next) => {
     const result = await next(e)
-    setColorMode(modeFor(e.value, colorterm))
+    setColorMode(modeFor(e.value, colorterm, term))
     $.ui.invalidate('ui.render')
     return result
   })
@@ -1400,6 +1513,14 @@ export function register(on, options) {
       // The same text as the coda file; Claude Code shows command output as Markdown.
       return { text: codaMarkdown(state, ledgerPath()).replace(/^# Orchestra coda\n\n/, '') }
     }
+    // Reads the narration (or the coda) aloud now, whatever the voiceCoda option says.
+    if (arg === 'voice') {
+      if (!isPerformance(state) || !codaFile) return { text: 'No performance in this session yet, so there is no coda to speak.' }
+      const text = view.narration?.status === 'done' ? view.narration.text : spokenFrom(codaMarkdown(state, ledgerPath()))
+      spokenText = ''
+      speakCoda($, text, codaFile, epoch).catch((err) => warn($, 'voice', `could not speak the coda (${err instanceof Error ? err.message : String(err)})`))
+      return { text: `Speaking the ${view.narration?.status === 'done' ? 'narrated coda' : 'coda'} with voice ${voice.voiceId || '(none set)'} in "${voice.language}"; the MP3 goes beside the coda.` }
+    }
     view.offset = 0
     await $.ui.open({ id: PANE, title: 'Orchestra', focus: true, closeOnEscape: true })
     return {}
@@ -1437,14 +1558,20 @@ export function register(on, options) {
     if (!isPerformance(state)) return next(e)
     const el = $.ui.resolve(e)
     const theirs = await next(e)
-    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80))
+    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80), view)
     return el.Box({ flexDirection: 'column', children: [mine, theirs].filter(Boolean) })
   })
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    const playing = musicians(state).filter((m) => m.state === 'playing').length
-    if (!playing) return next(e)
-    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix || ''} · ${playing} ${playing === 1 ? 'musician' : 'musicians'} playing` } })
+    const playing = musicians(state).filter((m) => m.state === 'playing')
+    if (!playing.length) return next(e)
+    // Who is playing what, on which file, for how long: the first SPINNER_SHOWN, then a count.
+    const shown = playing.slice(0, SPINNER_SHOWN).map((m) => {
+      const what = activity(state, m, view.now)
+      return `${m.name}${what ? ` ${short(what.replace(/ (\S*\/)+/, ' '), 40)}` : ''}`
+    })
+    const more = playing.length > SPINNER_SHOWN ? ` +${playing.length - SPINNER_SHOWN}` : ''
+    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix || ''} · ${playing.length} playing: ${shown.join(' · ')}${more}` } })
   })
 
   // While Orchestra asks about a conflict, the band above the prompt is hidden, so one line of it
@@ -1468,7 +1595,8 @@ export function register(on, options) {
     const el = $.ui.resolve(e)
     const instrument = m ? m.instrument : instrumentOf(type)
     const def = instrumentDef(instrument)
-    const label = m ? `${GLYPH[m.state]} ${m.name} · ${m.role} · ${plural(m.measures, 'measure')}` : `◌ ${def.name} · ${def.role}`
+    const mark = m && view.live && m.state === 'playing' ? note(view.frame, musicians(state).indexOf(m)) : m ? GLYPH[m.state] : ''
+    const label = m ? `${mark} ${m.name} · ${m.role} · ${plural(m.measures, 'measure')}` : `◌ ${def.name} · ${def.role}`
     const row = await next(e)
     return el.Box({ flexDirection: 'column', children: [el.Text({ color: paint(instrument), bold: true, children: [label] }), row].filter(Boolean) })
   })

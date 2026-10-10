@@ -186,6 +186,22 @@ A mod-builder review on 2026-10-10 with Claude Code 2.1.296 found no blocking pr
 
 Found in the review and not changed: any subagent, not only an `orchestra:` one, starts a performance. A headless run with one built-in `Explore` subagent and no conductor recorded it as `Guest (Explore)`, asked to open the pane, and wrote `.orchestra/` into the project. Not checked: drawing, which was not driven in this review. Evidence: `e2e-evidence/review-guest-20261010-151212/`, `e2e-evidence/review-fixes-1-3-4-20261010-181540/`.
 
+## Version 0.1.6: motion, a flat-black palette and the spoken coda
+
+Run on 2026-10-10 with Claude Code 2.1.296, an isolated config, `--plugin-dir ./plugin`, driven in tmux with the screen saved as colour codes.
+
+| Check | Result |
+| --- | --- |
+| Motion in a live performance (violin, trumpet, flute), screen saved every 100 ms | The band's baton cycles `╲ │ ╱ │` and a playing musician's note `♩ ♪ ♫ ♬`, one step per 250 ms frame; the stage pulse moves four cells a second; the handoff arrow travelled `Violin ━━━━▶ Flute .orchestra/notes/map.md v0`; the conductor's baton settles to `𝄐` when nobody plays |
+| Verbose activity | Spinner `2 playing: Trumpet · Flute`; a seat showed the conductor's command with `· 0s`; toasts `Violin joins the ensemble as Scout`, `Flute rests: 4 measures, 3 reads, 1 write` |
+| Flat background | Of the lines carrying a background code (`48;`), none is Orchestra's: all are Claude Code's own logo, dividers, prompt and Agent rows |
+| 256-colour mode (`TERM=xterm-256color`, no `COLORTERM`) | Found: the renderer rounds each channel to sixths, so violin `#87afff` drew as index 147. After the fix the band draws conductor 147, violin 111, trumpet 215, playing note 78, warning 221, each the palette's measured entry (at least 7:1 on black) |
+| Voice helper against the real ElevenLabs API | No key: `ELEVENLABS_API_KEY is not set …`, exit 1. A deliberately invalid key: `ElevenLabs answered 401 for /v2/voices (unauthorized: Invalid API key)` and the same for `/v1/voices/<id>`, exit 1. Input that is not JSON, and a request with no voice id, are refused with their reasons |
+| `claude plugin eval` (case `plugin/evals/ensemble-records`, one run on a copy of `plugin/` without another tool's `.omc` folder, whose hard links the eval refuses) | Score 1, 5 of 5 graders: violin spawned, flute spawned, `NOTES.md` written, and the mod's own ledger and coda written; 47 s, $0.46. An earlier run scored 0.75 because an LLM grader given only file paths could not read the coda; it was replaced by two file checks |
+| Prototype in Chrome | Baton, notes, pulse and handoff arrow change between 250 ms samples; Score staves show rests, bar lines and a pulsing playhead; all five chairs end "resting"; with reduced motion reported, the glyphs hold still; terminal background `rgb(0, 0, 0)`, pane and band transparent; no console errors |
+
+Not checked: an actual MP3, which needs an ElevenLabs key and voice (see [asset-handout.md](asset-handout.md)); truecolor values on screen, since tmux reduces them to 256 colours; the prototype's CSS animations under the operating system's own reduced-motion setting (the check replaced `matchMedia` in the page). Evidence: `e2e-evidence/motion-live-20261010-184509/`, `e2e-evidence/motion-256-20261010-184920/`, `e2e-evidence/palette-256-20261010-185153/`, `e2e-evidence/voice-20261010-184420/`, `e2e-evidence/prototype-motion-20261010-1905/`, `e2e-evidence/plugin-eval-20261010-2305/`.
+
 ## Defects found by verification and fixed
 
 1. Every musician was named `Guest (part.assigned)`: the spawn event's subagent type was overwritten by the event's own `type` field.

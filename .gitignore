@@ -8,3 +8,4 @@ plugin/.claude-plugin/types/
 node_modules/
 .mcp.json
 .omc/
+plugin/evals/results/

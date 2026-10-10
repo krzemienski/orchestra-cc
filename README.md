@@ -17,17 +17,17 @@ Orchestra is a Claude Code plugin. A **conductor** agent plans the work as a sco
 The mod runs inside Claude Code's own process with your access to files, processes and settings; mods are not sandboxed. `claude plugin validate ./plugin` prints the same list from the code.
 
 - **Calls:** `$.clock` (every, now), `$.command.register`, `$.config.list`, `$.env.get`, `$.fs` (exists, list, read, stat, write), `$.process.run`, `$.session.cwd`, `$.session.id`, and `$.ui` (ask, close, invalidate, log, open, resolve, status, toast).
-- **Reach:** writes files and starts a process. It makes no network call of its own; the optional narrator below does.
+- **Reach:** writes files and starts processes. It makes no network call of its own; the optional narrator and voice helpers below do.
 - **Sees:** every prompt, every row added to the conversation, every subagent spawn, every tool call and its result, and the pane, the band above the prompt, the spinner, the question dialog and the Agent rows it draws into.
-- **Environment:** reads `COLORTERM`; sets nothing.
+- **Environment:** reads `COLORTERM` and `TERM` to choose colours; sets nothing. It never reads `ELEVENLABS_API_KEY`: the voice helper inherits Claude Code's environment and reads it itself.
 - **State:** nothing in `$.state` or `$.store`; the ledger is kept in files.
 
 Threat model:
 
-1. **Reads:** during a performance, the project files the ledger tracks (hashed before and after tool calls); its own ledger under `.orchestra/performances/`; the `theme` setting; `COLORTERM`.
-2. **Runs:** only with `narrateCoda` on, `node <plugin>/narrate/narrate.mjs`, a fixed command line. The coda goes on standard input, never into the command line.
-3. **Sends:** nothing by default. With `narrateCoda` on, the narrator sends the coda to Anthropic with your Claude Code login. The coda holds your task and later requests (each cut to 500 characters), the musicians' names, file paths, short command text, and the conflict and failure lines. It holds no file contents and no musician answers.
-4. **Persists:** in the session's working directory, during a performance: ledger segments `.orchestra/performances/<session>.NNNN.jsonl`, `<session>-coda.md`, the narrated coda when it is on, and `.orchestra/.gitignore` (`*`). They stay until you delete them.
+1. **Reads:** during a performance, the project files the ledger tracks (hashed before and after tool calls); its own ledger under `.orchestra/performances/`; the `theme` setting; `COLORTERM` and `TERM`.
+2. **Runs:** only with `narrateCoda` on, `node <plugin>/narrate/narrate.mjs`; only with `voiceCoda` on or on `/orchestra voice`, `node <plugin>/narrate/voice.mjs`. Both are fixed command lines; the coda, the voice id and the language go on standard input, never into the command line.
+3. **Sends:** nothing by default. With `narrateCoda` on, the narrator sends the coda to Anthropic with your Claude Code login. With `voiceCoda` on, the voice helper sends the narration (or the coda as plain sentences, without the ledger path or hashes) and your voice id to `api.elevenlabs.io` with the key in `ELEVENLABS_API_KEY`. The coda holds your task and later requests (each cut to 500 characters), the musicians' names, file paths, short command text, and the conflict and failure lines. It holds no file contents and no musician answers.
+4. **Persists:** in the session's working directory, during a performance: ledger segments `.orchestra/performances/<session>.NNNN.jsonl`, `<session>-coda.md`, the narrated coda and `<session>-coda.mp3` when they are on, and `.orchestra/.gitignore` (`*`). They stay until you delete them.
 5. **Hostile input:** a file or tool result only changes the hashes recorded, never anything run. A task notification quoted in a tool result or a pasted prompt is ignored; only one Claude Code itself delivers is acted on. A ledger is replayed only if its name starts with the current session id, and a malformed one is neither used nor overwritten. Text written by the model reaches the conflict dialog only as a part summary cut to 40 characters, and reaches the narrator, which runs one turn with no tools, settings, plugins or MCP servers, so crafted text can at most change the narration.
 
 ## Install
@@ -61,6 +61,7 @@ Installing the plugin does not change your other sessions' main agent. The mod r
 | `/orchestra` | Opens the Orchestra pane (tabs: Ensemble, Score, Artifacts, Coda). Esc closes it. Keys 1–4 switch tabs. |
 | `/orchestra coda` | Prints the coda for this session from the ledger |
 | `/orchestra ledger` | Prints the ledger's path, event count and status |
+| `/orchestra voice` | Reads the narrated coda (or the coda) aloud with ElevenLabs into `.orchestra/performances/<session>-coda.mp3` |
 | `/orchestra close` | Closes the pane |
 
 ### Narrated coda (optional)
@@ -75,22 +76,29 @@ npm install --prefix <plugin directory>/narrate
 
 Each narration is one call to `claude-opus-5-5`, made with your Claude Code login, so it is billed like any other request. It runs in a separate Claude Code process with no tools, settings, plugins or MCP servers, and it never holds up your turn. An unchanged coda is not narrated again. If the narration fails, Orchestra says why in a toast, and the coda is not affected.
 
+### Spoken coda (optional)
+
+Turn on **Speak the coda** (`voiceCoda`) and ElevenLabs reads the narration, or the coda when narration is off, into `.orchestra/performances/<session>-coda.mp3`. It needs `ELEVENLABS_API_KEY` in the environment Claude Code starts from and a voice id (`voiceId`) verified for the language you choose (`voiceLanguage`, default `en`, since the coda is written in English). Find voices with `node <plugin directory>/narrate/voice.mjs --voices en`. The helper has no dependencies and refuses a voice that is not verified for the language. Setup steps, models and costs: [docs/asset-handout.md](docs/asset-handout.md).
+
 ## What you see
 
-- **The band above the prompt** lists every musician with a state glyph and the measures played so far:
-  - `♪` playing, `‖` waiting on you, `✓` done, `✕` failed.
-  - One measure is one completed tool call.
-  - The tool a musician is running right now is shown beside it.
+Everything that moves is driven by the ledger and a 250 ms frame timer that runs only in an interactive session while a musician is playing or waiting; an idle session never redraws.
+
+- **The band above the prompt** lists every musician with a state glyph, an activity bar and the measures played so far:
+  - The conductor's baton (`╲ │ ╱ │`) beats while anyone plays.
+  - A playing musician's note cycles (`♩ ♪ ♫ ♬`), offset by seat; `‖` blinks while it waits on you; `✓` done, `✕` failed.
+  - The bar (`▁` to `█`) is its tool calls among the last 20 events.
+  - One measure is one completed tool call; the tool it is running now is shown beside it.
   - Open conflicts and stale reads are flagged.
 - **The pane** (beside the transcript in a wide terminal, above the prompt in a narrow one):
-  - **Ensemble**: every musician's role, state, current activity and read and write counts. Select one to see its part, the version of every file it has seen, and its answer.
-  - **Score**: one staff per musician, newest events on the right. `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
+  - **Ensemble**: the stage first: the conductor with its baton, a pulse running down to the section, each chair as joining, playing, waiting on you, resting or stopped, and the newest handoff carried across as an arrow (`Violin ━━▶ Flute notes/map.md v0`). Then every musician's role, state, current tool and file with how long it has run, and read and write counts; select one to see its part, the version of every file it has seen, and its answer. Last, the six newest ledger events in words.
+  - **Score**: one staff per musician, newest events on the right. `─` rest, `┊` bar line every 8 events, `│┃` the playhead on a playing musician's staff, `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
   - **Artifacts**: every file touched, with its versions. Select one to see each version's author, base version, line delta and SHA-256, who read which version, and its conflicts.
   - **Coda**: who contributed what, artifacts changed, handoffs, conflicts, failures and stale reads, all computed from the ledger.
 - **The narrated coda**, if you turn it on (below): Claude's retelling of the coda, under "Narrated by Claude" at the end of the Coda tab.
 - **The status line** under the prompt, for example `Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 conflict`.
-- **Toasts** for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
-- **The spinner** gains `· 2 musicians playing`.
+- **Toasts** when a musician joins and when it rests (with its measures, reads and writes), for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
+- **The spinner** names who is playing what: `· 2 playing: Trumpet Edit limiter.js · 4s · Flute Read README.md · 1s`.
 - **Agent tool rows** are labelled with the instrument, its role, its state and its measures. When several parts start in one message, Claude Code draws a single summary row that a mod cannot redraw, so those parts are not labelled there.
 
 ## Data model
@@ -144,7 +152,7 @@ Its data is illustrative. The plugin in `plugin/` is the real integration.
 - If one of Orchestra's own hooks fails, Claude Code skips it and the work goes on (fail open). `claude plugin validate` reports this as `gating hook without .catch` for `session.append`, `config.set`, `prompt.submit`, `agent.spawn` and `ui.scroll`. The exception is a write Orchestra could not check against the other musicians' work in time: the `tool.call` hook's `.catch` sends it back to be read again and retried, so it never lands unchecked.
 - Progress is counted in measures (completed tool calls), not as a fraction of a known total, because Claude Code exposes no step plan for a subagent.
 - Hot reload of the mod waits until the current turn ends. After a reload, or after `claude --continue`, the session's ledger is replayed, so the picture is rebuilt rather than lost.
-- Colours follow your Claude Code theme (dark, light or ANSI) within 2 seconds of a change. On a 256-colour terminal the hex colours are approximated.
+- Colours follow your Claude Code theme within 2 seconds of a change, and Orchestra paints no backgrounds: everything sits flat on your terminal's own background. Truecolor terminals (`COLORTERM=truecolor`) get the hex values, each at least 4.5:1 against black (or white on a light theme); 256-colour terminals (`TERM` containing `256`) get the nearest xterm-256 entry; anything else, and the ANSI themes, get the terminal's own 16 colours.
 - The mods API is new: it was added in 2.1.287, and the events and methods may change between releases. This version was last tested against 2.1.296.
 - Agent teams (split-pane teammates in separate processes) were not tested.
 

@@ -1,0 +1,36 @@
+schema_version: "1.1"
+name: ensemble-records
+description: Two Orchestra musicians run in a real session; the mod records them and writes the coda.
+runs: 1
+expected_outcome: The violin maps the project, the flute writes NOTES.md, and Orchestra writes a coda naming both.
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 25
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Agent, Write, Edit]
+  prompt: >-
+    Use the orchestra:violin subagent to list the files in this project and say what each does.
+    Then use the orchestra:flute subagent to write NOTES.md, a short summary of the project based on
+    the violin's findings. Do not write any file yourself.
+graders:
+  - name: violin-spawned
+    type: tool_used
+    tool: Agent
+    input_match: 'orchestra:violin'
+    arm: with-only
+  - name: flute-spawned
+    type: tool_used
+    tool: Agent
+    input_match: 'orchestra:flute'
+    arm: with-only
+  - name: notes-written
+    type: file_exists
+    path: NOTES.md
+  # The mod, not the model, writes these: a ledger and a coda for the session.
+  - name: ledger-written
+    type: file_exists
+    path: .orchestra/performances/*.0001.jsonl
+  - name: coda-written
+    type: file_exists
+    path: .orchestra/performances/*-coda.md

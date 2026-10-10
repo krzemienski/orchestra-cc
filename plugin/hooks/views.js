@@ -2,6 +2,7 @@
 // for the surface, the folded ledger state, and the pane's own view state.
 
 import { CONDUCTOR, artifactStatus, coda, codaSections, counts, hashLabel, musicians, nameOf, plural, roster, statusLine } from './ledger.js'
+import { activity as activityOf, baton, blink, liveHandoff, meter, note, pulse, recent, travel } from './motion.js'
 import { paint } from './palette.js'
 
 export const GLYPH = { resting: '·', playing: '♪', waiting: '‖', done: '✓', failed: '✕' }
@@ -10,6 +11,8 @@ const STATE_TOKEN = { playing: 'ok', waiting: 'warn', done: null, failed: 'dange
 const SCORE_NAME_COLUMNS = 11
 const READS_SHOWN = 8
 const HELD_LINES = 14
+const RECENT_SHOWN = 6
+const BAR_EVENTS = 8
 
 export const short = (text, n) => {
   const s = String(text ?? '').replace(/\s+/g, ' ').trim()
@@ -60,14 +63,21 @@ const wrapItems = (items, cols) => items.reduce((rows, item) => {
   return rows
 }, /** @type {string[]} */ ([]))
 
-const LEGEND = ['○ read', '← used another\'s work', '● write', '· tool', '◆ assigned', '✓ done', '✕ failed', '‼ conflict', '⚠ stale', '? you decided']
+const LEGEND = ['─ rest', '┊ bar line', '│┃ playhead', '○ read', '← used another\'s work', '● write', '· tool', '◆ assigned', '✓ done', '✕ failed', '‼ conflict', '⚠ stale', '? you decided']
 
-const glyphOf = (el, m) => (STATE_TOKEN[m.state] ? tone(el, STATE_TOKEN[m.state], GLYPH[m.state]) : el.Text({ children: [GLYPH[m.state]] }))
+// A musician's state mark. With a frame, a playing musician's note cycles (offset by its seat) and
+// a waiting one's mark blinks; without one it holds still.
+/** @param {number|null} frame */
+function glyphOf(el, m, frame = null, seat = 0) {
+  const g = frame === null ? GLYPH[m.state] : m.state === 'playing' ? note(frame, seat) : m.state === 'waiting' ? blink(frame, GLYPH.waiting) : GLYPH[m.state]
+  return STATE_TOKEN[m.state] ? tone(el, STATE_TOKEN[m.state], g) : el.Text({ children: [g] })
+}
 
-export function band(el, state, width) {
-  const chunks = musicians(state).map((m) => el.Text({
+export function band(el, state, width, view = { frame: 0, live: false }) {
+  const frame = view.live ? view.frame : null
+  const chunks = musicians(state).map((m, i) => el.Text({
     key: m.key,
-    children: [who(el, m), ' ', glyphOf(el, m), ` ${m.measures}${m.tool ? ` ${m.tool.tool}` : ''}`],
+    children: [who(el, m), ' ', glyphOf(el, m, frame, i), tone(el, m.color, meter(state, m.key)), ` ${m.measures}${m.tool ? ` ${m.tool.tool}` : ''}`],
   }))
   const c = counts(state)
   const alerts = [
@@ -76,7 +86,7 @@ export function band(el, state, width) {
   ].filter(Boolean)
   return el.Box({
     flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width,
-    children: [dim(el, '𝄐 Orchestra'), ...chunks, ...alerts],
+    children: [view.live ? tone(el, 'conductor', `${baton(view.frame)} Orchestra`, true) : dim(el, '𝄐 Orchestra'), ...chunks, ...alerts],
   })
 }
 
@@ -135,18 +145,59 @@ const detailsButton = (el, view, type, id) => el.Button({
 })
 
 function ensemble(el, state, view, width) {
-  const c = counts(state)
-  return [line(el, [`${c.playing} playing · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`]), blank(el), ...roster(state).flatMap((key) => seat(el, state, view, key, width))]
+  return [...stage(el, state, view, width), blank(el), ...roster(state).flatMap((key, i) => seat(el, state, view, key, width, i)), ...ticker(el, state, width)]
 }
 
-function seat(el, state, view, key, width) {
+// The conductor above the section: its baton beats while anyone plays, a pulse runs down the line
+// to the musicians, and each musician shows its note and how busy it has been lately.
+function stage(el, state, view, width) {
+  const c = counts(state)
+  const frame = view.live ? view.frame : null
+  const section = musicians(state)
+  const tally = `${c.playing} playing${c.waiting ? ` · ${c.waiting} waiting` : ''} · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`
+  return [
+    line(el, [tone(el, 'conductor', `${frame === null ? '𝄐' : baton(frame)} Conductor`, true), dim(el, `  ${tally}`)]),
+    line(el, [tone(el, 'conductor', `  ${pulse(frame ?? 0, Math.min(width - 4, 4 + section.length * 12), frame !== null)}`)]),
+    el.Box({ key: 'section', flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width, children: section.map((m, i) => el.Text({
+      key: `chair-${m.key}`, children: [who(el, m), ' ', glyphOf(el, m, frame, i), tone(el, m.color, meter(state, m.key)), dim(el, ` ${CHAIR_WORD[m.state] ?? m.state}`)],
+    })) }),
+    ...handoffLine(el, state, view, width),
+  ]
+}
+
+// How a chair reads on the stage: a musician joins when assigned, plays, waits on you, rests when done.
+const CHAIR_WORD = { resting: 'joining', playing: 'playing', waiting: 'waiting on you', done: 'resting', failed: 'stopped' }
+
+// The newest handoff, carried across the stage from the musician who wrote it to the one who took it.
+function handoffLine(el, state, view, width) {
+  const h = liveHandoff(state)
+  if (!h) return []
+  const from = state.musicians[h.from]
+  const to = state.musicians[h.to]
+  const label = `${h.path} v${h.v}`
+  return [line(el, [
+    from ? tone(el, from.color, `  ${from.name} `, true) : dim(el, `  ${nameOf(state, h.from)} `),
+    tone(el, 'conductor', travel(view.frame, Math.max(3, Math.min(14, width - label.length - 30)), view.live)),
+    to ? tone(el, to.color, ` ${to.name}`, true) : dim(el, ` ${nameOf(state, h.to)}`),
+    dim(el, `  ${short(label, Math.max(8, width - 40))}`),
+  ])]
+}
+
+// The newest ledger events in words, newest first.
+function ticker(el, state, width) {
+  const items = recent(state, RECENT_SHOWN)
+  if (!items.length) return []
+  return [el.Text({ bold: true, children: ['Recent'] }), ...items.map((x, i) => line(el, [dim(el, `  ${String(x.seq).padStart(4)} `), i ? dim(el, short(x.text, width - 8)) : el.Text({ children: [short(x.text, width - 8)] })]))]
+}
+
+function seat(el, state, view, key, width, chair = 0) {
   const m = state.musicians[key]
-  const activity = m.tool ? `${m.tool.tool} ${m.tool.target}` : m.part || (key === CONDUCTOR ? 'Coordinating the ensemble' : m.role)
+  const activity = activityOf(state, m, view.now) || m.part || (key === CONDUCTOR ? 'Coordinating the ensemble' : m.role)
   const stale = state.stale.some((s) => s.agent === key && !s.cleared)
   const open = view.selected?.type === 'musician' && view.selected.id === key
   return [
     el.Box({ key: `seat-${key}`, flexDirection: 'row', columnGap: 1, children: [
-      who(el, m), dim(el, m.role), glyphOf(el, m), dim(el, m.state), detailsButton(el, view, 'musician', key),
+      who(el, m), dim(el, m.role), glyphOf(el, m, view.live ? view.frame : null, chair), dim(el, m.state), detailsButton(el, view, 'musician', key),
     ] }),
     line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
     key === CONDUCTOR ? null : line(el, [`  ${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
@@ -172,7 +223,7 @@ function musicianDetail(el, state, key, width) {
 
 // One staff per musician, the newest events on the right; glyphs coloured by meaning.
 function score(el, state, view, width) {
-  const cols = Math.max(10, width - SCORE_NAME_COLUMNS - 1)
+  const cols = Math.max(10, width - SCORE_NAME_COLUMNS - 2)
   const events = state.events.slice(-cols)
   const conflictSeqs = new Set(state.conflicts.map((c) => c.seq))
   const staleSeqs = new Set(state.stale.map((s) => `${s.seq}:${s.agent}`))
@@ -186,15 +237,18 @@ function score(el, state, view, width) {
       const g = { 'tool.call': ['·', color], 'artifact.write': ['●', color], 'part.assigned': ['◆', color], 'part.done': ['✓', 'ok'], 'part.failed': ['✕', 'danger'] }[e.type]
       if (g) return g
       if (e.type === 'tool.result' && !e.ok && !e.sentBack) return ['✕', 'danger']
-      return [' ', null]
+      return rest(e)
     }
     if (key === CONDUCTOR) {
       if (e.type === 'part.assigned') return ['◆', color]
       if (e.type === 'conflict.resolved') return ['?', 'warn']
       if (e.type === 'coda') return ['𝄐', color]
     }
-    return [' ', null]
+    return rest(e)
   }
+  // An event that is not this musician's is a rest on its staff line, with a bar line every
+  // BAR_EVENTS events of the ledger, so the lanes read as staves of measures.
+  const rest = (e) => [e.seq % BAR_EVENTS === 0 ? '┊' : '─', 'staff']
   const staff = (key, color) => {
     const runs = []
     for (const e of events) {
@@ -203,19 +257,22 @@ function score(el, state, view, width) {
       if (last && last.token === token) last.text += g
       else runs.push({ token, text: g })
     }
-    return runs.map((r, i) => (r.token ? el.Text({ key: `r${i}`, color: paint(r.token), children: [r.text] }) : el.Text({ key: `r${i}`, children: [r.text] })))
+    return runs.map((r, i) => (r.token === 'staff' ? el.Text({ key: `r${i}`, dimColor: true, children: [r.text] })
+      : r.token ? el.Text({ key: `r${i}`, color: paint(r.token), children: [r.text] }) : el.Text({ key: `r${i}`, children: [r.text] })))
   }
   const lanes = roster(state).map((key) => {
     const m = state.musicians[key]
     return el.Box({ key: `lane-${key}`, flexDirection: 'row', children: [
       el.Box({ width: SCORE_NAME_COLUMNS, children: [el.Text({ color: paint(m.color), wrap: 'truncate-end', children: [m.name] })] }),
       el.Text({ wrap: 'truncate-end', children: staff(key, m.color) }),
+      // The playhead: it pulses on a musician's lane while that musician plays.
+      view.live && m.state === 'playing' ? tone(el, m.color, view.frame % 2 ? '┃' : '│') : el.Text({ children: [' '] }),
     ] })
   })
   const first = events.length ? events[0].seq : 0
   const lastSeq = events.length ? events[events.length - 1].seq : 0
   return [
-    dim(el, `Events ${first}–${lastSeq} of the ledger, newest on the right`),
+    dim(el, `Events ${first}–${lastSeq} of the ledger, newest on the right${view.live ? ' · playing' : ''}`),
     ...lanes,
     blank(el),
     ...wrapItems(LEGEND, Math.max(10, width)).map((l) => dim(el, l)),
@@ -305,7 +362,19 @@ function codaTab(el, state, view, width) {
     blank(el),
     ...codaSections(state, c).flatMap(([title, items]) => section(title, items)),
     ...narrationBlock(el, view.narration, width),
+    ...voiceBlock(el, view.voice, width),
   ]
+}
+
+// The spoken coda: where the MP3 is, which voice read it, or why it could not be made.
+function voiceBlock(el, voice, width) {
+  if (!voice) return []
+  const note = {
+    speaking: 'ElevenLabs is reading it aloud…',
+    failed: `Could not speak it: ${voice.detail}`,
+    done: `Written to ${voice.path} · ${voice.detail}`,
+  }[voice.status]
+  return [blank(el), el.Text({ bold: true, children: ['Spoken by ElevenLabs'] }), ...para(el, note, '', width, { dimColor: voice.status !== 'failed' })]
 }
 
 // Claude's retelling of the coda, shown after the coda and labelled as a retelling.

@@ -12,6 +12,24 @@ Orchestra is a Claude Code plugin. A **conductor** agent plans the work as a sco
 | Timpani | `orchestra:timpani` | Tester: runs tests and commands, saves logs |
 | Cello | `orchestra:cello` | Reviewer: reports problems, never edits |
 
+## What it can reach
+
+The mod runs inside Claude Code's own process with your access to files, processes and settings; mods are not sandboxed. `claude plugin validate ./plugin` prints the same list from the code.
+
+- **Calls:** `$.clock` (every, now), `$.command.register`, `$.config.list`, `$.env.get`, `$.fs` (exists, list, read, stat, write), `$.process.run`, `$.session.cwd`, `$.session.id`, and `$.ui` (ask, close, invalidate, log, open, resolve, status, toast).
+- **Reach:** writes files and starts a process. It makes no network call of its own; the optional narrator below does.
+- **Sees:** every prompt, every row added to the conversation, every subagent spawn, every tool call and its result, and the pane, the band above the prompt, the spinner, the question dialog and the Agent rows it draws into.
+- **Environment:** reads `COLORTERM`; sets nothing.
+- **State:** nothing in `$.state` or `$.store`; the ledger is kept in files.
+
+Threat model:
+
+1. **Reads:** during a performance, the project files the ledger tracks (hashed before and after tool calls); its own ledger under `.orchestra/performances/`; the `theme` setting; `COLORTERM`.
+2. **Runs:** only with `narrateCoda` on, `node <plugin>/narrate/narrate.mjs`, a fixed command line. The coda goes on standard input, never into the command line.
+3. **Sends:** nothing by default. With `narrateCoda` on, the narrator sends the coda to Anthropic with your Claude Code login. The coda holds your task and later requests (each cut to 500 characters), the musicians' names, file paths, short command text, and the conflict and failure lines. It holds no file contents and no musician answers.
+4. **Persists:** in the session's working directory, during a performance: ledger segments `.orchestra/performances/<session>.NNNN.jsonl`, `<session>-coda.md`, the narrated coda when it is on, and `.orchestra/.gitignore` (`*`). They stay until you delete them.
+5. **Hostile input:** a file or tool result only changes the hashes recorded, never anything run. A task notification quoted in a tool result or a pasted prompt is ignored; only one Claude Code itself delivers is acted on. A ledger is replayed only if its name starts with the current session id, and a malformed one is neither used nor overwritten. Text written by the model reaches the conflict dialog only as a part summary cut to 40 characters, and reaches the narrator, which runs one turn with no tools, settings, plugins or MCP servers, so crafted text can at most change the narration.
+
 ## Install
 
 Requires Claude Code **2.1.287 or later**, the version that added mods. Tested with **2.1.289**. Mods must be allowed on your machine: they are on by default, but managed settings such as `allowManagedModsOnly`, or `--bare` and `--safe-mode`, turn them off.
@@ -123,11 +141,11 @@ Its data is illustrative. The plugin in `plugin/` is the real integration.
 - Mod drawing appears only in the Claude Code terminal and the Desktop app's Code tab. In the VS Code extension, `claude -p` and cloud sessions, the ledger, conflict guard and coda still work, but nothing is drawn.
 - A change a musician makes with Bash (for example `sed -i`) to a file Orchestra already tracks is credited to that musician, marked "via Bash", and marked uncertain if another musician ran a tool that can change files (a shell command, a write tool or an MCP tool) at the same time, or had a command running in the background. A background command's own changes are found when Claude Code reports it finished, and credited to the musician who started it. Tools added by other plugins are not counted. Files created by Bash are not recorded, so the musicians are told to create files with Write and Edit.
 - A command that hides its own exit code (for example `npm test; echo $?`) is recorded as a success. The tester and conductor are instructed never to append anything to a command, but a model can still ignore that.
-- If one of Orchestra's own hooks fails, Claude Code skips it and the tool runs anyway (fail open), so Orchestra can never block your work. `claude plugin validate` reports this as `gating hook without .catch: tool.call`.
+- If one of Orchestra's own hooks fails, Claude Code skips it and the work goes on (fail open). `claude plugin validate` reports this as `gating hook without .catch` for `session.append`, `config.set`, `prompt.submit`, `agent.spawn` and `ui.scroll`. The exception is a write Orchestra could not check against the other musicians' work in time: the `tool.call` hook's `.catch` sends it back to be read again and retried, so it never lands unchecked.
 - Progress is counted in measures (completed tool calls), not as a fraction of a known total, because Claude Code exposes no step plan for a subagent.
 - Hot reload of the mod waits until the current turn ends. After a reload, or after `claude --continue`, the session's ledger is replayed, so the picture is rebuilt rather than lost.
 - Colours follow your Claude Code theme (dark, light or ANSI) within 2 seconds of a change. On a 256-colour terminal the hex colours are approximated.
-- The mods API is new: it was added in 2.1.287, and the events and methods may change between releases. This version was tested against 2.1.289.
+- The mods API is new: it was added in 2.1.287, and the events and methods may change between releases. This version was last tested against 2.1.296.
 - Agent teams (split-pane teammates in separate processes) were not tested.
 
 ## License

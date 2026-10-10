@@ -173,6 +173,19 @@ An optional setting, `narrateCoda` (off by default), has Claude retell the coda 
 
 Not checked: changing the setting through the `/config` screen (the runs set it in `settings.json`), and a narration that times out or meets an API error. Evidence: `e2e-evidence/narrate-coda-20261009-181759/`.
 
+## Version 0.1.5: reach, threat model and a ledger test
+
+A mod-builder review on 2026-10-10 with Claude Code 2.1.296 found no blocking problem in the code. 0.1.5 changes no hook: the README gains a "What it can reach" section and a five-line threat model, two outdated limitation lines are corrected, and the plugin gains its first test on the official kit (`plugin/tests/ledger.test.ts`).
+
+| Check | Result |
+| --- | --- |
+| `claude plugin test plugin` | 3 pass, 0 fail: a fixed event list folds to the expected conflict, stale read and status line; the same events fold to the same coda twice; `/orchestra ledger` answers before any part is assigned |
+| Test seen failing | With the conflict check in `ledger.js` forced to skip, the first test failed (2 pass, 1 fail, exit 1); restored, 3 pass |
+| mod-builder `prove.mjs`, isolated harness | validate, load, test, `/orchestra` and isolation ran and passed; the calls and env name listed in the README match the validator's footprint |
+| `tsc -p plugin --noEmit` | Exit 0, with `tests/` included |
+
+Found in the review and not changed: any subagent, not only an `orchestra:` one, starts a performance. A headless run with one built-in `Explore` subagent and no conductor recorded it as `Guest (Explore)`, asked to open the pane, and wrote `.orchestra/` into the project. Not checked: drawing, which was not driven in this review. Evidence: `e2e-evidence/review-guest-20261010-151212/`, `e2e-evidence/review-fixes-1-3-4-20261010-181540/`.
+
 ## Defects found by verification and fixed
 
 1. Every musician was named `Guest (part.assigned)`: the spawn event's subagent type was overwritten by the event's own `type` field.

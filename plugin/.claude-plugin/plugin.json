@@ -39,7 +39,7 @@
     "voiceModel": {
       "type": "string",
       "title": "ElevenLabs model",
-      "description": "Text-to-speech model id; empty means eleven_multilingual_v2.",
+      "description": "Text-to-speech model id; empty means eleven_v4, which speaks the requested language. eleven_multilingual_v2 cannot enforce a language.",
       "required": false,
       "default": ""
     }

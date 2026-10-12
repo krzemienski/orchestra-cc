@@ -2,7 +2,7 @@
 // for the surface, the folded ledger state, and the pane's own view state.
 
 import { CONDUCTOR, artifactStatus, coda, codaSections, counts, hashLabel, musicians, nameOf, plural, roster, statusLine } from './ledger.js'
-import { activity as activityOf, baton, blink, liveHandoff, meter, note, pulse, recent, travel } from './motion.js'
+import { activity as activityOf, baton, beat, blink, cue, lastCall, liveHandoff, meter, note, pulse, recent, sustain, transition, travel } from './motion.js'
 import { paint } from './palette.js'
 
 export const GLYPH = { resting: '·', playing: '♪', waiting: '‖', done: '✓', failed: '✕' }
@@ -155,18 +155,29 @@ function stage(el, state, view, width) {
   const frame = view.live ? view.frame : null
   const section = musicians(state)
   const tally = `${c.playing} playing${c.waiting ? ` · ${c.waiting} waiting` : ''} · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`
+  const led = view.live ? cue(state, view.now) : null
   return [
-    line(el, [tone(el, 'conductor', `${frame === null ? '𝄐' : baton(frame)} Conductor`, true), dim(el, `  ${tally}`)]),
+    line(el, [tone(el, 'conductor', `${frame === null ? '��' : baton(frame)} Conductor`, true), dim(el, `  ${tally}`), led ? dim(el, `  cue → ${led.name}`) : '']),
     line(el, [tone(el, 'conductor', `  ${pulse(frame ?? 0, Math.min(width - 4, 4 + section.length * 12), frame !== null)}`)]),
-    el.Box({ key: 'section', flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width, children: section.map((m, i) => el.Text({
-      key: `chair-${m.key}`, children: [who(el, m), ' ', glyphOf(el, m, frame, i), tone(el, m.color, meter(state, m.key)), dim(el, ` ${CHAIR_WORD[m.state] ?? m.state}`)],
-    })) }),
+    el.Box({ key: 'section', flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width, children: section.map((m, i) => {
+      const move = view.live ? transition(state, m, view.now) : null
+      const word = move ? `${move.glyph} ${move.kind}` : ` ${CHAIR_WORD[m.state] ?? m.state}`
+      return el.Text({ key: `chair-${m.key}`, children: [who(el, m), ' ', glyphOf(el, m, frame, i), tone(el, m.color, meter(state, m.key)), dim(el, word)] })
+    }) }),
     ...handoffLine(el, state, view, width),
   ]
 }
 
 // How a chair reads on the stage: a musician joins when assigned, plays, waits on you, rests when done.
 const CHAIR_WORD = { resting: 'joining', playing: 'playing', waiting: 'waiting on you', done: 'resting', failed: 'stopped' }
+
+// What a musician finished last, and how long it took, once its current call has ended.
+function lastCallLine(el, state, key, width) {
+  const done = lastCall(state, key)
+  if (!done) return null
+  const took = done.ms >= 1000 ? `${Math.round(done.ms / 1000)}s` : `${done.ms}ms`
+  return line(el, [dim(el, `  last: ${short(`${done.tool}${done.target ? ` ${done.target}` : ''} · ${took}`, width - 10)}`)])
+}
 
 // The newest handoff, carried across the stage from the musician who wrote it to the one who took it.
 function handoffLine(el, state, view, width) {
@@ -200,6 +211,7 @@ function seat(el, state, view, key, width, chair = 0) {
       who(el, m), dim(el, m.role), glyphOf(el, m, view.live ? view.frame : null, chair), dim(el, m.state), detailsButton(el, view, 'musician', key),
     ] }),
     line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
+    m.tool ? null : lastCallLine(el, state, key, width),
     key === CONDUCTOR ? null : line(el, [`  ${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
     ...(open ? musicianDetail(el, state, key, width) : []),
     blank(el),
@@ -266,13 +278,14 @@ function score(el, state, view, width) {
       el.Box({ width: SCORE_NAME_COLUMNS, children: [el.Text({ color: paint(m.color), wrap: 'truncate-end', children: [m.name] })] }),
       el.Text({ wrap: 'truncate-end', children: staff(key, m.color) }),
       // The playhead: it pulses on a musician's lane while that musician plays.
+      view.live && m.tool ? tone(el, m.color, sustain(state, m, view.now, 8)) : '',
       view.live && m.state === 'playing' ? tone(el, m.color, view.frame % 2 ? '┃' : '│') : el.Text({ children: [' '] }),
     ] })
   })
   const first = events.length ? events[0].seq : 0
   const lastSeq = events.length ? events[events.length - 1].seq : 0
   return [
-    dim(el, `Events ${first}–${lastSeq} of the ledger, newest on the right${view.live ? ' · playing' : ''}`),
+    dim(el, `${view.live ? `bar ${beat(state, view.frame).bar}, beat ${beat(state, view.frame).beat} · ` : ''}Events ${first}–${lastSeq} of the ledger, newest on the right${view.live ? ' · playing' : ''}`),
     ...lanes,
     blank(el),
     ...wrapItems(LEGEND, Math.max(10, width)).map((l) => dim(el, l)),

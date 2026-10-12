@@ -6,7 +6,7 @@
 import { CONDUCTOR, instrumentDef, apply, authorOf, closeLeftOpen, codaMarkdown, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { GLYPH, TABS, band, heldWrite, pane, scrollPane } from './views.js'
 import { colorMode, modeFor, paint, setColorMode } from './palette.js'
-import { FRAME_MS, activity, note } from './motion.js'
+import { FRAME_MS, activity, elapsed, lastCall, note } from './motion.js'
 
 const PANE = 'orchestra'
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -467,6 +467,11 @@ function toastNews($, before, applied = []) {
     if (e.type === 'part.assigned') $.ui.toast(`Orchestra · ${m.name} joins the ensemble as ${m.role}`)
     else if (e.type === 'part.done') $.ui.toast(`Orchestra · ${m.name} rests: ${plural(m.measures, 'measure')}, ${plural(m.reads, 'read')}, ${plural(m.writes, 'write')}`)
     else if (e.type === 'part.failed') $.ui.toast(`Orchestra · ${m.name} stopped: ${e.reason}`, { timeoutMs: 6000 })
+    else if (e.type === 'tool.call' && e.target) $.ui.toast(`Orchestra · ${m.name}: ${e.tool} ${e.target}`)
+    else if (e.type === 'tool.result' && e.ok) {
+      const done = lastCall(state, m.key)
+      if (done && done.ms > 0) $.ui.toast(`Orchestra · ${m.name}: ${e.tool}${e.target ? ` ${e.target}` : ''} · ${elapsed(done.ms)}`)
+    }
   }
   for (const s of state.stale.slice(before.stale)) {
     $.ui.toast(`Orchestra · stale read: ${nameOf(state, s.agent)} worked from v${s.readV} of ${s.path}; ${nameOf(state, s.writer)} wrote v${s.currentV}`, { timeoutMs: 6000 })

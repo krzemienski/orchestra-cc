@@ -1,0 +1,5 @@
+modelRoles:
+  default: omniroute/cc/claude-opus-5-5
+  task: omniroute/cc/claude-sonnet-5-5:auto
+  advisor: omniroute/cx/gpt-6-astra:auto
+  smol: omniroute/gc/grok-4.7:auto

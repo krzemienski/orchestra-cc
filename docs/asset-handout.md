@@ -1,6 +1,6 @@
 # Orchestra asset handout
 
-What Orchestra needs, what already exists, and the one thing you have to get yourself: an ElevenLabs account for the spoken coda. Audited on 2026-10-10 across `plugin/`, `prototype/`, `docs/`, `plans/` and the root files; `e2e-evidence/` holds run evidence, not assets.
+What Orchestra needs, what already exists, and the one thing you have to get yourself: an ElevenLabs account for the spoken coda. Audited on 2026-10-10 and re-checked on 2026-10-12 across `plugin/`, `prototype/`, `docs/`, `plans/` and the root files. `e2e-evidence/` holds run evidence; the only images in it that are Orchestra's own are listed below, and there is no audio in it.
 
 ## The short answer
 
@@ -15,7 +15,7 @@ The only missing asset is a voice. Orchestra can now read the coda aloud through
 | ElevenLabs API key | The key string from elevenlabs.io → Developers → API Keys, with access to Text to Speech and Voices (read) | The environment variable `ELEVENLABS_API_KEY` in the shell you start Claude Code from, for example a line `export ELEVENLABS_API_KEY=…` in `~/.zshrc`. Never in the repository, a settings file or the plugin options | `plugin/narrate/voice.mjs` (`process.env.ELEVENLABS_API_KEY`). The mod never reads it: the sidecar inherits Claude Code's environment |
 | A voice | An ElevenLabs voice id, a 20-character string such as `JBFqnCBsd6RMkjVDRZzb`, for a voice in your account's library that is verified for the language below | The plugin option `voiceId` | `plugin/hooks/register.js` (`voice.voiceId`), sent to the sidecar on standard input |
 | The voice's language | An ISO 639-1 code. The coda and its narration are written in English, so `en`; choose another code only if you change what is spoken | The plugin option `voiceLanguage` (default `en`) | `voice.mjs` checks the voice's `verified_languages` and refuses a voice that is not verified for it |
-| A model (optional) | An ElevenLabs model id: `eleven_multilingual_v2` (default, 10,000 characters per request), `eleven_flash_v2_5` (40,000, takes `language_code`), `eleven_v3` (5,000) | The plugin option `voiceModel` | `voice.mjs`; text longer than the model's limit is cut at a sentence end and the Coda tab says so |
+| A model (optional) | An ElevenLabs model id. The default is `eleven_v4` (10,000 characters, speaks the requested language without the voice's own accent, takes `language_code`). `eleven_multilingual_v2` (10,000) cannot take `language_code`, so the language can drift. `eleven_flash_v2_5` (40,000) and `eleven_v3` (5,000) also work. `eleven_v4_turbo` does not: the docs place it on text-to-dialogue only | The plugin option `voiceModel` | `voice.mjs` reads the real per-request limit from `GET /v1/models` and cuts text longer than it at a sentence end; the Coda tab says so |
 
 Output: `.orchestra/performances/<session>-coda.mp3` in the project where the performance ran (MP3, 44.1 kHz, 128 kbps, `mp3_44100_128`), beside `<session>-coda.md`. Nothing is written to the plugin.
 
@@ -48,6 +48,8 @@ Each reading is billed to your ElevenLabs account, about one credit per characte
 
 What could be repurposed, and was: the narrated coda from `plugin/narrate/narrate.mjs` is already plain prose, so it is what the voice reads when narration is on; otherwise `register.js` turns the coda into plain sentences (no Markdown marks, ledger path or hashes) before sending it.
 
+One alternative was considered and rejected. Claude Code's mods API offers `$.audio.speak`, which runs macOS `say`, and `$.audio.play`. It was not built: it is not ElevenLabs, it only exists on macOS, and it would be a second voice path to keep honest. The mod still makes no audio call of its own.
+
 ## Everything the audit found
 
 | Asset | Where it lives | Status |
@@ -57,7 +59,11 @@ What could be repurposed, and was: the narrated coda from `plugin/narrate/narrat
 | Agent colours in Claude Code's agent list | `plugin/agents/*.md` frontmatter | In code |
 | Prototype colours and section variables | `prototype/styles.css` | In code |
 | Prototype fonts: Inter, JetBrains Mono | Google Fonts, linked from `prototype/index.html`; system fallbacks in `styles.css` | Remote; offline the fallbacks are used |
-| PRD map fonts: Instrument Serif, IBM Plex Sans | Google Fonts, linked from `docs/orchestra-prd-map.html`; IBM Plex Mono is named but not loaded, so a system monospace is used | Remote |
+| PRD map fonts: Instrument Serif, IBM Plex Sans, IBM Plex Mono | Google Fonts, all three in the `css2` URL in `docs/orchestra-prd-map.html` | Remote |
+| PRD map instrument colours | Hard-coded hex in `docs/orchestra-prd-map.html`, copied from `palette.js` | In code, but it will drift if the palette changes |
+| Plugin directory icon | Not set: `plugin/.claude-plugin/plugin.json` has no `icon` | Optional. Anthropic's plugin directory listing reads one. A PNG of the mark would have to be drawn; nothing in the repo is an image of it |
+| README screenshots | None embedded | Optional. `e2e-evidence/prototype-motion-20261010-1905/` holds five captures of the prototype, which show the HTML emulation rather than the real terminal |
+| Research reference media | Screenshots, mp4 and gif of other tools, linked from `docs/orchestra-research-report.md` and `docs/orchestra-prd.md` | Remote, third-party; reference only, not reusable |
 | PRD map diagrams | Mermaid 11 and `@mermaid-js/layout-elk` from jsDelivr, `docs/orchestra-prd-map.html` | Remote |
 | Sample performance | `prototype/scenario.js` | In repo |
 | Eval case and scaffold | `plugin/evals/ensemble-records/` | In repo |

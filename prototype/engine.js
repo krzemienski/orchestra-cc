@@ -118,7 +118,7 @@ const handlers = {
     m.writes += 1;
     m.added += e.added;
     m.removed += e.removed;
-    m.tool = null;
+    if (m.total === 0) m.tool = null; // the conductor never plays measures; its write closes the call
     m.lastRead[e.path] = v;
     for (const p of Object.keys(m.lastRead)) if (p !== e.path) m.wroteAfterRead[p] = true;
     note(state, 'write', e.agent, `${m.name} wrote ${e.path} v${v} (+${e.added} −${e.removed}): ${e.summary}`, { path: e.path, v });
@@ -136,6 +136,7 @@ const handlers = {
   'measure'(state, e) {
     const m = state.musicians[e.agent];
     m.measures = Math.min(m.total, m.measures + 1);
+    m.tool = null; // a call finishes at the musician's next measure
   },
   'part.assigned'(state, e) {
     const m = state.musicians[e.agent];

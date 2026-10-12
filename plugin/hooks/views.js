@@ -2,8 +2,8 @@
 // for the surface, the folded ledger state, and the pane's own view state.
 
 import { CONDUCTOR, artifactStatus, coda, codaSections, counts, hashLabel, musicians, nameOf, plural, roster, statusLine } from './ledger.js'
-import { activity as activityOf, baton, beat, blink, cue, lastCall, liveHandoff, meter, note, pulse, recent, sustain, transition, travel } from './motion.js'
-import { paint } from './palette.js'
+import { activity as activityOf, baton, beat, blink, cue, elapsed, lastCall, liveHandoff, meter, note, pulse, recent, sustain, transition, travel } from './motion.js'
+import { ground, paint } from './palette.js'
 
 export const GLYPH = { resting: '·', playing: '♪', waiting: '‖', done: '✓', failed: '✕' }
 export const TABS = [['ensemble', 'Ensemble'], ['score', 'Score'], ['artifacts', 'Artifacts'], ['coda', 'Coda']]
@@ -95,7 +95,8 @@ const HEADER_ROWS = 2
 export function pane(el, state, view, width, bodyRows) {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
   const body = render(el, state, view, width)
-  return el.Box({ flexDirection: 'column', width, children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows)] })
+  // The body sits on the ground its colours were measured on, not on Claude Code's grey pane fill.
+  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows)] })
 }
 
 const tabBar = (el, view) => el.Box({
@@ -157,7 +158,7 @@ function stage(el, state, view, width) {
   const tally = `${c.playing} playing${c.waiting ? ` · ${c.waiting} waiting` : ''} · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`
   const led = view.live ? cue(state, view.now) : null
   return [
-    line(el, [tone(el, 'conductor', `${frame === null ? '��' : baton(frame)} Conductor`, true), dim(el, `  ${tally}`), led ? dim(el, `  cue → ${led.name}`) : '']),
+    line(el, [tone(el, 'conductor', `${frame === null ? '\u{1D110}' : baton(frame)} Conductor`, true), dim(el, `  ${tally}`), led ? dim(el, `  cue → ${led.name}`) : '']),
     line(el, [tone(el, 'conductor', `  ${pulse(frame ?? 0, Math.min(width - 4, 4 + section.length * 12), frame !== null)}`)]),
     el.Box({ key: 'section', flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width, children: section.map((m, i) => {
       const move = view.live ? transition(state, m, view.now) : null
@@ -175,8 +176,7 @@ const CHAIR_WORD = { resting: 'joining', playing: 'playing', waiting: 'waiting o
 function lastCallLine(el, state, key, width) {
   const done = lastCall(state, key)
   if (!done) return null
-  const took = done.ms >= 1000 ? `${Math.round(done.ms / 1000)}s` : `${done.ms}ms`
-  return line(el, [dim(el, `  last: ${short(`${done.tool}${done.target ? ` ${done.target}` : ''} · ${took}`, width - 10)}`)])
+  return line(el, [dim(el, `  last: ${short(`${done.tool}${done.target ? ` ${done.target}` : ''} · ${elapsed(done.ms)}`, width - 10)}`)])
 }
 
 // The newest handoff, carried across the stage from the musician who wrote it to the one who took it.
@@ -207,8 +207,11 @@ function seat(el, state, view, key, width, chair = 0) {
   const stale = state.stale.some((s) => s.agent === key && !s.cleared)
   const open = view.selected?.type === 'musician' && view.selected.id === key
   return [
-    el.Box({ key: `seat-${key}`, flexDirection: 'row', columnGap: 1, children: [
-      who(el, m), dim(el, m.role), glyphOf(el, m, view.live ? view.frame : null, chair), dim(el, m.state), detailsButton(el, view, 'musician', key),
+    // Name, mark, state and the button keep their width; only the role gives way, cut to one row.
+    el.Box({ key: `seat-${key}`, flexDirection: 'row', columnGap: 1, width, children: [
+      el.Box({ flexShrink: 0, children: [who(el, m)] }),
+      el.Box({ flexShrink: 1, children: [el.Text({ dimColor: true, wrap: 'truncate-end', children: [m.role] })] }),
+      el.Box({ flexShrink: 0, columnGap: 1, flexDirection: 'row', children: [glyphOf(el, m, view.live ? view.frame : null, chair), dim(el, m.state), detailsButton(el, view, 'musician', key)] }),
     ] }),
     line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
     m.tool ? null : lastCallLine(el, state, key, width),

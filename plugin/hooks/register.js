@@ -5,7 +5,7 @@
 
 import { CONDUCTOR, instrumentDef, apply, authorOf, closeLeftOpen, codaMarkdown, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { GLYPH, TABS, band, heldWrite, pane, scrollPane } from './views.js'
-import { colorMode, modeFor, paint, setColorMode } from './palette.js'
+import { colorMode, ground, modeFor, paint, setColorMode } from './palette.js'
 import { FRAME_MS, activity, elapsed, lastCall, note } from './motion.js'
 
 const PANE = 'orchestra'
@@ -46,6 +46,8 @@ let colorterm = ''
 let term = ''
 const THEME_RECHECK_MS = 2000
 const SPINNER_SHOWN = 2
+// A finished tool call gets its own toast only when it ran at least this long.
+const LONG_CALL_MS = 3000
 // One narration: the Agent SDK starts a Claude Code process and makes one model call.
 const NARRATE_TIMEOUT_MS = 180_000
 const VOICE_TIMEOUT_MS = 120_000
@@ -467,10 +469,11 @@ function toastNews($, before, applied = []) {
     if (e.type === 'part.assigned') $.ui.toast(`Orchestra · ${m.name} joins the ensemble as ${m.role}`)
     else if (e.type === 'part.done') $.ui.toast(`Orchestra · ${m.name} rests: ${plural(m.measures, 'measure')}, ${plural(m.reads, 'read')}, ${plural(m.writes, 'write')}`)
     else if (e.type === 'part.failed') $.ui.toast(`Orchestra · ${m.name} stopped: ${e.reason}`, { timeoutMs: 6000 })
-    else if (e.type === 'tool.call' && e.target) $.ui.toast(`Orchestra · ${m.name}: ${e.tool} ${e.target}`)
-    else if (e.type === 'tool.result' && e.ok) {
+    // A finished call long enough to notice: what tool, on what file, for how long. Shorter calls
+    // show in the spinner and the pane, so the toasts stay for news.
+    else if (e.type === 'tool.result' && e.ok && m.assigned) {
       const done = lastCall(state, m.key)
-      if (done && done.ms > 0) $.ui.toast(`Orchestra · ${m.name}: ${e.tool}${e.target ? ` ${e.target}` : ''} · ${elapsed(done.ms)}`)
+      if (done && done.ms >= LONG_CALL_MS) $.ui.toast(`Orchestra · ${m.name} finished ${e.tool}${e.target ? ` ${e.target}` : ''} · ${elapsed(done.ms)}`)
     }
   }
   for (const s of state.stale.slice(before.stale)) {
@@ -1536,7 +1539,7 @@ export function register(on, options) {
     const el = $.ui.resolve(e)
     const width = Math.max(30, e.props.bodyColumns || 60)
     if (!isPerformance(state)) {
-      return el.Box({ flexDirection: 'column', children: [
+      return el.Box({ flexDirection: 'column', backgroundColor: ground(), children: [
         el.Text({ bold: true, children: ['Orchestra'] }),
         el.Text({ dimColor: true, children: ['No performance yet: one starts when the conductor (claude --agent orchestra:conductor) assigns a part to a musician.'] }),
       ] })
@@ -1569,14 +1572,22 @@ export function register(on, options) {
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     const playing = musicians(state).filter((m) => m.state === 'playing')
-    if (!playing.length) return next(e)
-    // Who is playing what, on which file, for how long: the first SPINNER_SHOWN, then a count.
+    const waiting = musicians(state).filter((m) => m.state === 'waiting')
+    if (!playing.length && !waiting.length) return next(e)
+    // Who is playing what, on which file, for how long: the first SPINNER_SHOWN, then a count. A
+    // musician between calls says what it last finished, from the ledger.
     const shown = playing.slice(0, SPINNER_SHOWN).map((m) => {
       const what = activity(state, m, view.now)
-      return `${m.name}${what ? ` ${short(what.replace(/ (\S*\/)+/, ' '), 40)}` : ''}`
+      if (what) return `${m.name} ${short(what.replace(/ (\S*\/)+/, ' '), 40)}`
+      const done = lastCall(state, m.key)
+      return done ? `${m.name} after ${done.tool} (${elapsed(done.ms)})` : m.name
     })
     const more = playing.length > SPINNER_SHOWN ? ` +${playing.length - SPINNER_SHOWN}` : ''
-    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix || ''} · ${playing.length} playing: ${shown.join(' · ')}${more}` } })
+    const parts = [
+      playing.length ? `${playing.length} playing: ${shown.join(' · ')}${more}` : null,
+      waiting.length ? `${waiting.map((m) => m.name).join(', ')} waiting on you` : null,
+    ].filter(Boolean)
+    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix || ''} · ${parts.join(' · ')}` } })
   })
 
   // While Orchestra asks about a conflict, the band above the prompt is hidden, so one line of it

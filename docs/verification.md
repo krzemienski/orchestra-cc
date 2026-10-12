@@ -202,6 +202,30 @@ Run on 2026-10-10 with Claude Code 2.1.296, an isolated config, `--plugin-dir ./
 
 Not checked: an actual MP3, which needs an ElevenLabs key and voice (see [asset-handout.md](asset-handout.md)); truecolor values on screen, since tmux reduces them to 256 colours; the prototype's CSS animations under the operating system's own reduced-motion setting (the check replaced `matchMedia` in the page). Evidence: `e2e-evidence/motion-live-20261010-184509/`, `e2e-evidence/motion-256-20261010-184920/`, `e2e-evidence/palette-256-20261010-185153/`, `e2e-evidence/voice-20261010-184420/`, `e2e-evidence/prototype-motion-20261010-1905/`, `e2e-evidence/plugin-eval-20261010-2305/`.
 
+## Version 0.1.7: a performance you can watch, and a voice that keeps its language
+
+Run on 2026-10-12 with Claude Code 2.1.296.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Plugin validation | `claude plugin validate ./plugin` | `✔ Validation passed`; env reads `COLORTERM, TERM`; env writes nothing; network: none (the calls list has no fetch) |
+| Test suite | `claude plugin test plugin` | `3 pass, 0 fail` |
+| Type check | `npx -y -p typescript tsc -p plugin --noEmit` | exit 0, no output |
+| Motion API | `node .planning/contracts/motion.contract.mjs` | `motion contract: OK`: `transition`, `cue`, `sustain`, `lastCall`, `beat` and the finished-call ticker line, from a folded ledger |
+the flute's held note `♪━` after 1 s, `♪━━━━` after 4 s. The band carries no `backgroundColor`; the pane carries one, at its root, equal to the palette ground. Idle band starts `𝄐 Orchestra` |
+| Palette | `node .planning/contracts/palette-proof.mjs` | `palette proof: OK`. Lowest contrast: dark 7.57 (danger, vs `#000000`), light 5.32 (flute, ok, vs `#ffffff`), 256-colour 5.77 (danger, on the exact bytes sent); every token ≥ 4.5:1. Mode selection: truecolor → dark, 256-colour terminal → `256`, plain `xterm` → ANSI names, `dark-ansi` theme → ANSI, light without truecolor → ANSI. Pane ground: dark and 256 `#000000`, light `#ffffff`, ANSI left to Claude Code |
+| Live session, dark theme, truecolor in tmux (installed CLI's own login, `--plugin-dir ./plugin`) | Three musicians assigned, handoff and stale read recorded, coda written; screen captured every 200 ms | Ensemble shows `last: Read package.json · 0s`, the ticker `Violin · Read package.json · 0s`, chairs `resting` / `stopped`; Score shows `bar 6, beat 2` stepping to `beat 3`, `4`, `1` across 250 ms captures while the playhead alternates `┃` / `│`, staves with `┊` bar lines, `◆`, `○`, `●`, `·` and the conductor's `𝄐` coda mark |
+| Pane background, live | Every cell's background read from `tmux capture-pane -e` | Before: the docked pane body was Claude Code's grey (`48;5;235`) on every row, beside a transcript with no background code. Tried `'default'` (ignored by Ink: still grey) and `'#000000'` / `'black'` (Ink sent `48;5;16`, black). After: the pane body is `48;5;16` on every text row; only the frame's divider column and close-mark row stay Claude Code's grey |
+| Seat row in a 70-column pane | Live capture | Before: `Conducto` / `r` and `playin` / `g` wrapped onto a second row. After: name, mark, state and `▸ details` keep their width and the role is cut with `…` (`Conductor Plans the score, assigns parts, presents… · resting ▸ details`) |
+| Voice helper, no key | `node plugin/narrate/voice.mjs` with bad input | Each reason reported as itself: `standard input is not JSON`, `no voice id…`, `no .mp3 output path was given`, `no text was given`, `unknown option --bogus`, `usage: … --voices <language>` (all exit 1) |
+| Voice helper, real API, invalid key | `env ELEVENLABS_API_KEY=invalid-key-for-check node plugin/narrate/voice.mjs --models` and `--voices hi` | `ElevenLabs answered 401 for /v1/models (unauthorized: Invalid API key)` and the same for `/v2/voices` (exit 1) |
+| Voice helper, full speak request, invalid key | JSON on stdin with a real voice id | `ElevenLabs answered 401 for /v1/voices/JBFqnCBsd6RMkjVDRZzb (unauthorized: Invalid API key)` (exit 1) |
+| Voice helper, network unreachable | `HTTPS_PROXY=http://127.0.0.1:9 NODE_USE_ENV_PROXY=1` | `could not reach ElevenLabs (ECONNREFUSED)` (exit 1) |
+| `/orchestra voice` in a live session (resumed with `--continue`, no key, no voice id) | Typed at the prompt, then the Coda tab read | Prompt: `orchestra: Speaking the coda with voice (none set) in "en"; the MP3 goes beside the coda.` Coda tab, last block: `Spoken by ElevenLabs` / `Could not speak it: no voice id: set the voiceId option for the plugin…`. The resumed session replayed its ledger: band `𝄐 Orchestra  Violin ✕ 13  Timpani ✕ 6` |
+| Prototype scripted performance | `node .planning/contracts/prototype-replay.mjs` | `prototype replay: OK`: 89 events; 5 cues, 5 joins, 5 rests, 1 stop, 5 handoffs; held notes on 33 frames; 1 finished-call toast (`trumpet Edit config/limits.json 8s`); first join #5, first rest #20, first handoff #21 |
+
+Not checked: an MP3 from a real voice (needs your ElevenLabs key and voice id); the prototype drawn in a browser (the browser was set aside at your request; its code passes `node --check` and its scripted performance replays as above); a light theme and a 256-colour terminal live (both are covered by `palette-proof.mjs`, not seen on screen this time). Screenshots: `docs/screenshots/`. Evidence: `e2e-evidence/run-20261012-voice-theme-motion/` (`shots/` holds the colour captures each screenshot was rendered from, `live-shots/proj/.orchestra/performances/` the ledger and coda).
+
 ## Defects found by verification and fixed
 
 1. Every musician was named `Guest (part.assigned)`: the spawn event's subagent type was overwritten by the event's own `type` field.

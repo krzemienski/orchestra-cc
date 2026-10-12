@@ -1,9 +1,10 @@
-// Colour tokens (PRD §6.4). Orchestra never paints a background: every element sits flat on the
-// terminal's own background, and only the foreground is coloured. Each token has a value for a dark
-// terminal, measured against pure black, and one for a light terminal, measured against white; both
-// stay at least 4.5:1 (MIN_CONTRAST). A 256-colour terminal gets the xterm-256 cube entry nearest the
-// dark value, so what it draws is what was measured; anything less gets an ANSI name, which the terminal
-// maps through its own palette.
+// Colour tokens (PRD §6.4). The band, status line, spinner and toasts paint no background: they sit
+// on the terminal's own, and only the foreground is coloured. The pane is painted `ground()`, the
+// background the tokens were measured on, over Claude Code's grey pane fill. Each token has a value for
+// a dark terminal, measured against pure black, and one for a light terminal, measured against white;
+// both stay at least 4.5:1 (MIN_CONTRAST). A 256-colour terminal gets the xterm-256 cube entry nearest
+// the dark value, so what it draws is what was measured; anything less gets an ANSI name, which the
+// terminal maps through its own palette.
 
 export const MIN_CONTRAST = 4.5
 export const BLACK = '#000000'
@@ -69,6 +70,16 @@ export function setColorMode(next) {
 }
 
 export const colorMode = () => mode
+
+// The pane's ground. Claude Code fills a docked pane with its own grey (xterm 235, `#262626`),
+// which differs from the terminal's background beside it and lowers every token's contrast. The
+// pane body is painted the ground its tokens were measured on instead: black for a dark or
+// 256-colour terminal, white for a light one. With ANSI names the terminal maps colours through
+// its own palette and no hex is right, so the engine's fill is left alone.
+export function ground() {
+  if (mode === 'ansi') return undefined
+  return mode === 'light' ? WHITE : BLACK
+}
 
 export function paint(token) {
   const key = TOKENS[token] ? token : 'guest'

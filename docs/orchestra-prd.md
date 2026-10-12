@@ -493,8 +493,8 @@ orchestra: .orchestra/performances/6f1e…jsonl · 112 events · Orchestra · 0 
 - **Keyboard (G6).** Every pane control is a `Button`, so Tab, ↑/↓ and Enter reach it. The tabs also have hotkeys `1`–`4`. Ctrl+X then Tab focuses the pane from the prompt, and Ctrl+X then X closes it [A4]. The dialog is Claude Code's own and keeps its key handling.
 - **Non-colour cues (G7).** Every state has a glyph and a word. Every alert has a word (`conflict`, `stale`, `failed`). The instrument colour always sits next to the instrument name.
 - **Screen readers.** The terminal is read as text: band and status line are single lines in a fixed order, and `/orchestra coda` prints the whole coda as transcript text. In the Desktop app, buttons have labels equal to their visible text.
-- **Motion.** Orchestra draws no animation of its own. The spinner's animation is Claude Code's.
-- **Contrast.** Every colour token in §6.4 is chosen for at least 4.5:1 against Claude Code's dark terminal background `#0c1018` (and its light counterpart). Verified contrast ratios are listed with the tokens.
+- **Motion.** Revised in 0.1.6–0.1.7: Orchestra animates its own marks (baton, notes, pulse, handoff arrow, joining/resting steps, held notes, the Score playhead and beat) on a 250 ms frame timer. The timer runs only in an interactive session while a musician is playing or waiting, and stops when nobody is, so an idle session never redraws. Every mark that moves sits beside a word or number from the ledger (`playing`, `resting`, `bar 6`, `Edit src/limiter.ts · 4s`), so nothing is conveyed by motion alone.
+- **Contrast.** Revised in 0.1.6–0.1.7: every colour token in §6.4 is at least 4.5:1 against pure black `#000000` (and white `#ffffff` on a light theme), the background Orchestra sits on. The band, status line, spinner and toasts paint no background and use the terminal's own. The pane body is painted that same black (or white), because Claude Code fills a docked pane with its own grey `#262626`. Verified contrast ratios are listed with the tokens.
 
 ## 3. System architecture
 
@@ -654,25 +654,26 @@ Orchestra's agents run on Claude models chosen through each agent's `model` fron
 
 ### 6.4 Colour tokens
 
-Contrast ratios are computed with the WCAG 2.x relative-luminance formula against `#0c1018` (dark) and `#ffffff` (light). Every token is at least 4.5:1: the lowest are 6.86 dark and 5.32 light. Run on 2026-10-05: a Python script applying the WCAG formula, with its output pasted into this table.
+Contrast ratios are computed with the WCAG 2.x relative-luminance formula against `#000000` (dark) and `#ffffff` (light), the backgrounds Orchestra sits on. Every token is at least 4.5:1: the lowest are 7.57 dark and 5.32 light. The values come from `node .planning/contracts/palette-proof.mjs`, run on 2026-10-12, which also checks the 256-colour entry each token is sent as (lowest 5.77). The first version of this table, of 2026-10-05, measured against `#0c1018`.
 
 | # | Token | Default (dark) | Default (light) | Contrast dark / light | ANSI fallback | Used for | Set in |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 24 | `conductor` | `#c3a6ff` | `#6b3fd4` | 9.27 / 6.39 | `cyan` | Conductor name, staff, Agent label | `ledger.js` `INSTRUMENTS` |
-| 25 | `violin` (strings) | `#7eaaff` | `#2457d6` | 8.23 / 6.16 | `blue` | Violin | `ledger.js` |
-| 26 | `trumpet` (brass) | `#f2b950` | `#8a5a00` | 10.73 / 5.93 | `yellow` | Trumpet | `ledger.js` |
-| 27 | `flute` (woodwinds) | `#5fd3a8` | `#1d7a4f` | 10.31 / 5.32 | `green` | Flute | `ledger.js` |
-| 28 | `timpani` (percussion) | `#ff8c6e` | `#b4441e` | 8.37 / 5.55 | `red` | Timpani | `ledger.js` |
-| 29 | `cello` (strings, low) | `#d78cff` | `#8a2fb4` | 8.24 / 6.67 | `magenta` | Cello | `ledger.js` |
-| 30 | `guest` | `#a8b3c7` | `#4f5b70` | 9.01 / 6.86 | `white` | Loops outside the roster (not drawn on surfaces) | `ledger.js` |
-| 31 | `ok` | `#6bdc9a` | `#1d7a4f` | 11.18 / 5.32 | `green` | `✓` on the Score, resolved conflicts | `views.js` |
-| 32 | `warn` | `#ffc65c` | `#8a5a00` | 12.23 / 5.93 | `yellow` | `⚠`, `(now vK)`, `stale` | `views.js` |
-| 33 | `danger` | `#ff6b6b` | `#b42318` | 6.86 / 6.57 | `red` | `‼`, `✕`, `conflict`, `skipped vK` | `views.js` |
+| 24 | `conductor` | `#c3a6ff` | `#6b3fd4` | 10.22 / 6.39 | `cyan` | Conductor name, staff, Agent label | `palette.js` `TOKENS` |
+| 25 | `violin` (strings) | `#7eaaff` | `#2457d6` | 9.08 / 6.16 | `blue` | Violin | `palette.js` |
+| 26 | `trumpet` (brass) | `#f2b950` | `#8a5a00` | 11.83 / 5.93 | `yellow` | Trumpet | `palette.js` |
+| 27 | `flute` (woodwinds) | `#5fd3a8` | `#1d7a4f` | 11.37 / 5.32 | `green` | Flute | `palette.js` |
+| 28 | `timpani` (percussion) | `#ff8c6e` | `#b4441e` | 9.23 / 5.55 | `red` | Timpani | `palette.js` |
+| 29 | `cello` (strings, low) | `#d78cff` | `#8a2fb4` | 9.08 / 6.67 | `magenta` | Cello | `palette.js` |
+| 30 | `guest` | `#a8b3c7` | `#4f5b70` | 9.94 / 6.86 | `white` | Loops outside the roster (not drawn on surfaces) | `palette.js` |
+| 31 | `ok` | `#6bdc9a` | `#1d7a4f` | 12.33 / 5.32 | `green` | `✓` on the Score, resolved conflicts | `palette.js` |
+| 32 | `warn` | `#ffc65c` | `#8a5a00` | 13.48 / 5.93 | `yellow` | `⚠`, `(now vK)`, `stale` | `palette.js` |
+| 33 | `danger` | `#ff6b6b` | `#b42318` | 7.57 / 6.57 | `red` | `‼`, `✕`, `conflict`, `skipped vK` | `palette.js` |
 | 34 | `muted` | Claude Code `dimColor` | `dimColor` | inherits | dim | Roles, counts, hashes, legends | `views.js` |
 | 35 | `text` | Claude Code default foreground | default | inherits | default | Body text, active tab | `views.js` |
 
 - The agent frontmatter `color` (Claude Code's own agent panel) uses the nearest allowed value: conductor `cyan`, violin `blue`, trumpet `yellow`, flute `green`, timpani `red`, cello `purple` [A7].
-- Raw hex colours need a truecolor terminal; on a 256-colour terminal they are approximated (observed in tmux). The mode is chosen at start and re-checked every 2 s: the light tokens for a light theme, the ANSI names for an ANSI theme or when `COLORTERM` is not `truecolor`, otherwise the dark tokens.
+- Raw hex colours need a truecolor terminal. On a 256-colour terminal (`TERM` containing `256`), each token is sent as the value that Claude Code's renderer maps to that token's nearest xterm-256 entry, and the contrast is measured on that entry. The mode is chosen at start and re-checked every 2 s: the light tokens for a light theme, the 256-colour entries for a 256-colour terminal, the ANSI names for an ANSI theme or a terminal with neither, otherwise the dark tokens.
+- The pane's ground follows the same mode (`palette.js` `ground()`): `#000000` for dark and 256-colour, `#ffffff` for light, and Claude Code's own fill under ANSI, where the terminal maps colours through its own palette.
 
 ## 7. Research appendix
 

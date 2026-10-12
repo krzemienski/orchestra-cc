@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { paint, setColorMode, modeFor, contrast, rendererIndex, TOKENS, XTERM, MIN_CONTRAST, BLACK, WHITE } from '../../plugin/hooks/palette.js'
+import { ground, paint, setColorMode, modeFor, contrast, rendererIndex, TOKENS, XTERM, MIN_CONTRAST, BLACK, WHITE } from '../../plugin/hooks/palette.js'
 
 const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
 
@@ -37,6 +37,14 @@ for (const mode of ['dark', 'light', '256', 'ansi']) {
     }
     console.log(`${k.padEnd(10)} ${mode.padEnd(6)} ${v.padEnd(8)} ${c}`)
   }
+}
+setColorMode('dark')
+// The pane ground is the background each mode's contrast was measured on; ANSI leaves Claude Code's.
+const GROUNDS = { dark: BLACK, '256': BLACK, light: WHITE, ansi: undefined }
+for (const [m, want] of Object.entries(GROUNDS)) {
+  setColorMode(m)
+  assert.equal(ground(), want, `ground in ${m} mode`)
+  console.log(`ground ${m.padEnd(5)} ${want ?? '(Claude Code default)'}`)
 }
 setColorMode('dark')
 console.log('palette proof: OK')

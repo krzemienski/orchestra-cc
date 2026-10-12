@@ -12,6 +12,10 @@ Orchestra is a Claude Code plugin. A **conductor** agent plans the work as a sco
 | Timpani | `orchestra:timpani` | Tester: runs tests and commands, saves logs |
 | Cello | `orchestra:cello` | Reviewer: reports problems, never edits |
 
+![Orchestra's Ensemble pane in a live session: the conductor, two musicians, their last calls with durations, and the newest ledger events](docs/screenshots/ensemble-tab.png)
+
+**[The guide](docs/guide.md)** covers installing, running a performance, every surface Orchestra draws with screenshots, colours and your theme, keys, and troubleshooting.
+
 ## What it can reach
 
 The mod runs inside Claude Code's own process with your access to files, processes and settings; mods are not sandboxed. `claude plugin validate ./plugin` prints the same list from the code.
@@ -32,7 +36,7 @@ Threat model:
 
 ## Install
 
-Requires Claude Code **2.1.287 or later**, the version that added mods. Tested with **2.1.289**. Mods must be allowed on your machine: they are on by default, but managed settings such as `allowManagedModsOnly`, or `--bare` and `--safe-mode`, turn them off.
+Requires Claude Code **2.1.287 or later**, the version that added mods. Tested with **2.1.296**. Mods must be allowed on your machine: they are on by default, but managed settings such as `allowManagedModsOnly`, or `--bare` and `--safe-mode`, turn them off.
 
 ```sh
 claude plugin marketplace add krzemienski/orchestra-cc
@@ -78,7 +82,7 @@ Each narration is one call to `claude-opus-5-5`, made with your Claude Code logi
 
 ### Spoken coda (optional)
 
-Turn on **Speak the coda** (`voiceCoda`) and ElevenLabs reads the narration, or the coda when narration is off, into `.orchestra/performances/<session>-coda.mp3`. It needs `ELEVENLABS_API_KEY` in the environment Claude Code starts from and a voice id (`voiceId`) verified for the language you choose (`voiceLanguage`, default `en`, since the coda is written in English). Find voices with `node <plugin directory>/narrate/voice.mjs --voices en`. The helper has no dependencies and refuses a voice that is not verified for the language. Setup steps, models and costs: [docs/asset-handout.md](docs/asset-handout.md).
+Turn on **Speak the coda** (`voiceCoda`) and ElevenLabs reads the narration, or the coda when narration is off, into `.orchestra/performances/<session>-coda.mp3`. It needs `ELEVENLABS_API_KEY` in the environment Claude Code starts from and a voice id (`voiceId`) for the language you choose (`voiceLanguage`, default `en`, since the coda is written in English). The default model, `eleven_v4`, is sent that language as `language_code`, so any voice speaks it; a voice whose verification for that model names other languages only is refused. Find voices with `node <plugin directory>/narrate/voice.mjs --voices en` and models with `--models`. The helper has no dependencies. Setup steps, models and costs: [docs/asset-handout.md](docs/asset-handout.md).
 
 ## What you see
 
@@ -91,14 +95,14 @@ Everything that moves is driven by the ledger and a 250 ms frame timer that runs
   - One measure is one completed tool call; the tool it is running now is shown beside it.
   - Open conflicts and stale reads are flagged.
 - **The pane** (beside the transcript in a wide terminal, above the prompt in a narrow one):
-  - **Ensemble**: the stage first: the conductor with its baton, a pulse running down to the section, each chair as joining, playing, waiting on you, resting or stopped, and the newest handoff carried across as an arrow (`Violin ━━▶ Flute notes/map.md v0`). Then every musician's role, state, current tool and file with how long it has run, and read and write counts; select one to see its part, the version of every file it has seen, and its answer. Last, the six newest ledger events in words.
-  - **Score**: one staff per musician, newest events on the right. `─` rest, `┊` bar line every 8 events, `│┃` the playhead on a playing musician's staff, `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
+  - **Ensemble**: the stage first: the conductor with its baton and, for 1.5 s after it assigns a part, `cue → Trumpet`; a pulse running down to the section; each chair as playing, waiting on you, resting or stopped, stepping through `· ♩ ♪ ♫ joining`, `♪ ♩ · resting` or `♪ ✕ stopping` for the second after the ledger records the change; and the newest handoff carried across as an arrow (`Violin ━━▶ Flute notes/map.md v0`). Then every musician's role, state, current tool and file with how long it has run (or, between calls, `last: Edit src/limiter.ts · 4s`), and read and write counts; select one to see its part, the version of every file it has seen, and its answer. Last, the six newest ledger events in words, finished calls with their duration.
+  - **Score**: one staff per musician, newest events on the right, under `bar N, beat M` (the bar from the ledger, eight events each; the beat from the frame timer). `─` rest, `┊` bar line every 8 events, `♪━━` a held note that grows one bar per second while a musician's tool call runs, `│┃` the playhead on a playing musician's staff, `○` read, `←` read another's work, `●` write, `‼` conflict, `⚠` stale read, `✓` done, `✕` failed.
   - **Artifacts**: every file touched, with its versions. Select one to see each version's author, base version, line delta and SHA-256, who read which version, and its conflicts.
   - **Coda**: who contributed what, artifacts changed, handoffs, conflicts, failures and stale reads, all computed from the ledger.
 - **The narrated coda**, if you turn it on (below): Claude's retelling of the coda, under "Narrated by Claude" at the end of the Coda tab.
 - **The status line** under the prompt, for example `Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 conflict`.
-- **Toasts** when a musician joins and when it rests (with its measures, reads and writes), for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
-- **The spinner** names who is playing what: `· 2 playing: Trumpet Edit limiter.js · 4s · Flute Read README.md · 1s`.
+- **Toasts** when a musician joins and when it rests (with its measures, reads and writes), when it finishes a tool call that ran 3 s or more (`Trumpet finished Bash npm test · 12s`), for handoffs, stale reads and failures as they happen, for each conflict once it is decided, and when the coda is ready.
+- **The spinner** names who is playing what, on which file, for how long, what a musician between calls last finished, and who is waiting on you: `· 2 playing: Trumpet Edit limiter.js · 4s · Flute after Read (1s) · Violin waiting on you`.
 - **Agent tool rows** are labelled with the instrument, its role, its state and its measures. When several parts start in one message, Claude Code draws a single summary row that a mod cannot redraw, so those parts are not labelled there.
 
 ## Data model
@@ -152,7 +156,7 @@ Its data is illustrative. The plugin in `plugin/` is the real integration.
 - If one of Orchestra's own hooks fails, Claude Code skips it and the work goes on (fail open). `claude plugin validate` reports this as `gating hook without .catch` for `session.append`, `config.set`, `prompt.submit`, `agent.spawn` and `ui.scroll`. The exception is a write Orchestra could not check against the other musicians' work in time: the `tool.call` hook's `.catch` sends it back to be read again and retried, so it never lands unchecked.
 - Progress is counted in measures (completed tool calls), not as a fraction of a known total, because Claude Code exposes no step plan for a subagent.
 - Hot reload of the mod waits until the current turn ends. After a reload, or after `claude --continue`, the session's ledger is replayed, so the picture is rebuilt rather than lost.
-- Colours follow your Claude Code theme within 2 seconds of a change, and Orchestra paints no backgrounds: everything sits flat on your terminal's own background. Truecolor terminals (`COLORTERM=truecolor`) get the hex values, each at least 4.5:1 against black (or white on a light theme); 256-colour terminals (`TERM` containing `256`) get the nearest xterm-256 entry; anything else, and the ANSI themes, get the terminal's own 16 colours.
+- Colours follow your Claude Code theme within 2 seconds of a change. The band, status line, spinner and toasts paint no background and sit on your terminal's own. Claude Code fills a docked pane with its own grey (`#262626`); Orchestra paints the pane body black on a dark terminal and white on a light one, the background each colour was measured on, so the pane matches the screen around it. The pane's divider and close mark stay Claude Code's. Truecolor terminals (`COLORTERM=truecolor`) get the hex values, each at least 4.5:1 against that background; 256-colour terminals (`TERM` containing `256`) get the nearest xterm-256 entry; anything else, and the ANSI themes, get the terminal's own 16 colours and Claude Code's own pane fill. See [the guide](docs/guide.md#5-colours-and-your-theme).
 - The mods API is new: it was added in 2.1.287, and the events and methods may change between releases. This version was last tested against 2.1.296.
 - Agent teams (split-pane teammates in separate processes) were not tested.
 

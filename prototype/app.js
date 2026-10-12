@@ -44,9 +44,19 @@ const BAR_EVENTS = 8;
 const RECENT_WINDOW = 20;
 const RECENT_SHOWN = 6;
 const HANDOFF_WINDOW = 12;
+const CUE_EVENTS = 3;
+const TRANSITION_EVENTS = 2;
+const SUSTAIN_MAX = 8;
+const TOAST_MIN_SECONDS = 3;
+const TRANSITION_GLYPHS = {
+  joining: ['·', '♩', '♪', '♫'],
+  resting: ['♪', '♩', '·', '·'],
+  stopping: ['♪', '✕', '✕', '✕'],
+};
+const TRANSITION_OF = { 'part.assigned': 'joining', 'part.done': 'resting', 'part.failed': 'stopping' };
 const CHAIR_WORD = { tacet: 'tacet', tuning: 'joining', playing: 'playing', waiting: 'waiting on you', done: 'resting', failed: 'stopped' };
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const motion = { frame: 0, timer: null };
+const motion = { frame: 0, timer: null, starts: {} };
 const live = () => Boolean(motion.timer);
 
 function syncMotion(state) {
@@ -72,7 +82,42 @@ function renderMotion() {
     el.textContent = `${'━'.repeat(at)}▶${' '.repeat(n - at - 1)}`;
   });
   document.querySelectorAll('[data-playhead]').forEach((el) => { el.textContent = live() && f % 2 ? '┃' : '│'; });
+  document.querySelectorAll('[data-chair]').forEach((el) => {
+    const glyphs = TRANSITION_GLYPHS[el.dataset.chair];
+    const key = el.dataset.key;
+    if (motion.starts[key] === undefined) motion.starts[key] = f;
+    const step = f - motion.starts[key];
+    const at = !live() ? glyphs.length - 1 : el.dataset.chair === 'joining' ? step % glyphs.length : Math.min(step, glyphs.length - 1);
+    el.textContent = glyphs[at];
+  });
+  document.querySelectorAll('[data-beat]').forEach((el) => { el.textContent = live() ? `, beat ${(f % 4) + 1}` : ''; });
 }
+
+// The newest part.assigned / part.done / part.failed for a musician, as { kind, index }, or null.
+function newestTransition(id) {
+  for (let i = player.cursor - 1; i >= 0; i -= 1) {
+    const e = player.events[i];
+    if (e.agent === id && TRANSITION_OF[e.type]) return { kind: TRANSITION_OF[e.type], index: i };
+  }
+  return null;
+}
+
+// Tool calls from the events up to the cursor, in the scenario's own time. A call opens at
+// `tool.call` and finishes at the same agent's next `measure`.
+function toolCalls() {
+  const open = {};
+  const finished = [];
+  for (let i = 0; i < player.cursor; i += 1) {
+    const e = player.events[i];
+    if (e.type === 'tool.call') open[e.agent] = { index: i, tool: e.tool, target: e.target };
+    else if (e.type === 'measure' && open[e.agent]) {
+      finished.push({ agent: e.agent, tool: open[e.agent].tool, target: open[e.agent].target, from: open[e.agent].index, to: i });
+      delete open[e.agent];
+    } else if (e.type === 'part.done' || e.type === 'part.failed') delete open[e.agent];
+  }
+  return { open, finished };
+}
+const secondsBetween = (from, to) => ((to - from) * BASE_INTERVAL_MS) / 1000;
 
 // A musician's state mark: a cycling note while it plays (offset by seat), a blinking mark while it waits.
 function stateGlyph(m) {
@@ -295,7 +340,15 @@ function renderToasts(state) {
     }
     return e.kind === 'handoff' ? `${e.text.split(': ')[0]}` : e.text;
   };
-  const toasts = recent.slice(-2).map((e) => {
+  const items = recent.map((e) => ({ step: e.step, entry: e }));
+  for (const c of toolCalls().finished) {
+    if (state.step - (c.to + 1) < TOAST_LIFETIME && secondsBetween(c.from, c.to) >= TOAST_MIN_SECONDS) items.push({ step: c.to + 1, call: c });
+  }
+  items.sort((a, b) => a.step - b.step);
+  const toasts = items.slice(-2).map(({ entry: e, call }) => {
+    if (call) {
+      return h('div', { class: 'toast ok' }, h('strong', {}, `Orchestra · ${shortName(call.agent)} finished ${call.tool} ${call.target} · ${Math.round(secondsBetween(call.from, call.to))}s`));
+    }
     const tone = e.kind === 'conflict' || e.kind === 'fail' ? 'danger' : e.kind === 'coda' || e.kind === 'handoff' || e.kind === 'done' ? 'ok' : '';
     const title = { conflict: 'Conflict', fail: 'Part failed', stale: 'Stale read', coda: 'Coda ready', handoff: 'Handoff', assign: 'Joins', done: 'Rests' }[e.kind];
     return h('div', { class: `toast ${tone}` }, h('strong', {}, `Orchestra · ${title}`), h('div', { class: 'dim' }, said(e)));
@@ -324,12 +377,26 @@ function stage(state) {
   const last = player.events[player.cursor - 1];
   const chairs = ms.map((m) => {
     const just = last && last.agent === m.id ? (last.type === 'part.assigned' ? ' just-joined' : last.type === 'part.done' ? ' just-rested' : '') : '';
+    const tr = newestTransition(m.id);
+    const moving = tr && player.cursor - 1 - tr.index < TRANSITION_EVENTS;
+    const word = moving
+      ? [h('span', { 'data-chair': tr.kind, 'data-key': `${m.id}@${tr.index}` }, TRANSITION_GLYPHS[tr.kind][0]), ` ${tr.kind}`]
+      : CHAIR_WORD[m.state];
     return h('span', { class: `chair ${m.state}${just}` }, who(m.id, shortName(m.id)), ' ', stateGlyph(m),
-      h('span', { class: SECTION_CLASS[m.section] }, meterOf(m.id)), h('span', { class: 'dim' }, ` ${CHAIR_WORD[m.state]}`));
+      h('span', { class: SECTION_CLASS[m.section] }, meterOf(m.id)), h('span', { class: 'dim' }, ' ', word));
   });
+  let cue = null;
+  for (let i = player.cursor - 1; i >= 0; i -= 1) {
+    const e = player.events[i];
+    if (e.type === 'part.assigned' && e.by === 'conductor') {
+      if (player.cursor - 1 - i < CUE_EVENTS) cue = e.agent;
+      break;
+    }
+  }
   const ho = state.lastHandoff && state.step - state.lastHandoff.step <= HANDOFF_WINDOW ? state.lastHandoff : null;
   return h('div', { class: 'stage' },
-    h('div', { class: 'stage-head' }, h('span', { class: 'c-podium', 'data-baton': '' }, '𝄐'), ' ', who('conductor', 'Conductor'), h('span', { class: 'dim' }, `  ${tally}`)),
+    h('div', { class: 'stage-head' }, h('span', { class: 'c-podium', 'data-baton': '' }, '𝄐'), ' ', who('conductor', 'Conductor'), h('span', { class: 'dim' }, `  ${tally}`),
+      cue ? h('span', { class: 'dim cue' }, `  cue → ${shortName(cue)}`) : null),
     h('div', { class: 'pulse c-podium', 'data-pulse': String(Math.min(48, 6 + ms.length * 9)) }, ''),
     ms.length ? h('div', { class: 'chairs' }, chairs) : h('div', { class: 'dim' }, 'No musician has a part yet.'),
     ho ? h('div', { class: 'handoff-line' }, who(ho.from, shortName(ho.from)), ' ', h('span', { class: 'c-podium', 'data-travel': '14' }, ''), ' ',
@@ -345,14 +412,17 @@ function ticker() {
 }
 
 function ensembleTab(state) {
+  const { finished } = toolCalls();
   const seats = Object.values(state.musicians).map((m) => {
     const sel = view.selected.type === 'musician' && view.selected.id === m.id;
+    const lastDone = m.tool ? null : [...finished].reverse().find((c) => c.agent === m.id);
     const activity = m.tool
       ? `${m.tool.tool} ${m.tool.target}${elapsedOf(m) ? ` · ${elapsedOf(m)}` : ''}`
       : m.id === 'conductor' ? 'Coordinating the ensemble' : m.part;
     return h('div', { class: `seat${sel ? ' selected' : ''}`, onclick: () => select('musician', m.id), role: 'button', tabindex: '0' },
       h('div', { class: 'seat-head' }, who(m.id, m.name), stateLabel(m)),
       h('div', { class: 'seat-sub' }, activity),
+      lastDone ? h('div', { class: 'seat-sub dim last-call' }, `last: ${lastDone.tool} ${lastDone.target} · ${Math.round(secondsBetween(lastDone.from, lastDone.to))}s`) : null,
       m.total ? h('div', {}, measureBar(m), m.flags.includes('stale') ? h('span', { class: 'state waiting' }, '  ⚠ stale read') : null) : null);
   });
   return [stage(state), ...seats, ticker()].filter(Boolean);
@@ -404,13 +474,20 @@ function scoreTab(state) {
       cells.push(g ? h('span', { class: g[1] || SECTION_CLASS[m.section] }, g[0]) : h('span', { class: 'rest' }, (i + 1) % BAR_EVENTS === 0 ? '┊' : '─'));
     }
     // The playhead pulses at the end of a playing musician's staff.
+    // A held note beside an open tool call: one ━ per whole second since it opened, 8 characters at most.
+    const open = toolCalls().open[m.id];
+    if (state.musicians[m.id].tool && open) {
+      const bars = Math.max(0, Math.min(SUSTAIN_MAX - 1, Math.floor(secondsBetween(open.index, end))));
+      cells.push(h('span', { class: `sustain ${SECTION_CLASS[m.section]}` }, `♪${'━'.repeat(bars)}`));
+    }
     if (state.musicians[m.id].state === 'playing') cells.push(h('span', { class: SECTION_CLASS[m.section], 'data-playhead': '' }, '│'));
     rows.push(h('div', { class: 'lane-name' }, who(m.id, m.name.replace('First ', ''))), h('div', { class: 'lane' }, cells));
   }
   return [
-    h('p', { class: 'pane-title' }, `The score: one staff per musician, newest event on the right (events ${start + 1}–${end}).`),
+    h('p', { class: 'pane-title' }, `bar ${Math.floor(end / BAR_EVENTS) + 1}`, h('span', { 'data-beat': '' }, live() ? `, beat ${(motion.frame % 4) + 1}` : ''),
+      ` · The score: one staff per musician, newest event on the right (events ${start + 1}–${end}).`),
     h('div', { class: 'score' }, rows),
-    h('div', { class: 'legend' }, '─ rest   ┊ bar line   │┃ playhead\n○ read   ● write   → handoff out   ← handoff in\n| measure done   ◆ assigned   ✓ part done\n✕ failed   ‼ conflict   ⚠ stale read   ? asks you'),
+    h('div', { class: 'legend' }, '─ rest   ┊ bar line   │┃ playhead   ♪━ held note\n○ read   ● write   → handoff out   ← handoff in\n| measure done   ◆ assigned   ✓ part done\n✕ failed   ‼ conflict   ⚠ stale read   ? asks you'),
   ];
 }
 

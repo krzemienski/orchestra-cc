@@ -25,12 +25,16 @@ const FALLBACK_LIMIT = 5000
 // `language_code` is "not supported for multilingual_v2 models"; other models take it.
 const TAKES_LANGUAGE_CODE = (model) => model !== 'eleven_multilingual_v2'
 
-// The live character limit from GET /v1/models, falling back to the table above. Also refuses a
-// model the account's catalogue says cannot do text to speech, such as one that is dialogue only.
+// The live character limit from GET /v1/models, falling back to the table above when the list
+// cannot be read (it is a lookup, so it must not end the reading the way `api` does on a failure).
+// Also refuses a model the account's catalogue says cannot do text to speech, such as one that is
+// dialogue only.
 async function limitFor(model) {
   let models = []
   try {
-    models = await (await api('/v1/models')).json()
+    const res = await fetch(`${API}/v1/models`, { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY || '' } })
+    if (!res.ok) return LIMITS[model] ?? FALLBACK_LIMIT
+    models = await res.json()
   } catch {
     return LIMITS[model] ?? FALLBACK_LIMIT
   }
@@ -55,7 +59,12 @@ function fail(reason) {
 async function api(path, init = {}) {
   const key = process.env.ELEVENLABS_API_KEY
   if (!key) fail('ELEVENLABS_API_KEY is not set in the environment Claude Code was started from')
-  const res = await fetch(`${API}${path}`, { ...init, headers: { 'xi-api-key': key, ...(init.headers || {}) } })
+  let res
+  try {
+    res = await fetch(`${API}${path}`, { ...init, headers: { 'xi-api-key': key, ...(init.headers || {}) } })
+  } catch (err) {
+    fail(`could not reach ElevenLabs (${err?.cause?.code || (err instanceof Error ? err.message : String(err))})`)
+  }
   if (res.ok) return res
   const body = await res.text()
   let detail = body

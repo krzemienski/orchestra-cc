@@ -53,25 +53,32 @@ One alternative was considered and rejected. Claude Code's mods API offers `$.au
 
 ## Everything the audit found
 
-| Asset | Where it lives | Status |
+Line numbers are as of version 0.1.7.
+
+| Asset | Defined at (file:line) | Status |
 | --- | --- | --- |
-| Musician and score glyphs (`· ♪ ‖ ✓ ✕`, `♩ ♪ ♫ ♬`, `╲│╱`, `▁…█`, pulse `•`, handoff `━…▶`, held note `♪━━`, `─ ┊ │┃`, `○ ← ● ◆ ‼ ⚠ ?`) | `plugin/hooks/views.js`, `plugin/hooks/motion.js` | In code |
-| Orchestra mark `𝄐` (U+1D110) | `plugin/hooks/views.js`, `plugin/hooks/register.js`, `prototype/app.js` | In code. It lies outside the Basic Multilingual Plane, so a terminal font without it draws a box (`docs/orchestra-prototype-design.md` notes this). Nerd Fonts and JetBrains Mono have it |
-| Prototype-only glyphs (`◌` tuning, `→`, `\|`) | `prototype/app.js` | In code |
-| Terminal colour tokens (10 tokens; dark, light, xterm-256 and ANSI values) and the pane ground (black or white) | `plugin/hooks/palette.js` | In code |
-| Agent colours in Claude Code's agent list | `plugin/agents/*.md` frontmatter | In code |
-| Prototype colours and section variables | `prototype/styles.css` | In code |
-| Prototype fonts: Inter, JetBrains Mono | Google Fonts, linked from `prototype/index.html`; system fallbacks in `styles.css` | Remote; offline the fallbacks are used |
-| PRD map fonts: Instrument Serif, IBM Plex Sans, IBM Plex Mono | Google Fonts, all three in the `css2` URL in `docs/orchestra-prd-map.html` | Remote |
-| PRD map instrument colours | Hard-coded hex in `docs/orchestra-prd-map.html`, copied from `palette.js` | In code, but it will drift if the palette changes |
-| Plugin directory icon | Not set: `plugin/.claude-plugin/plugin.json` has no `icon` | Optional; see the icon entry under "Why each missing asset cannot be made" |
-| README and guide screenshots | `docs/screenshots/ensemble-tab.png`, `score-tab.png`, `band.png`, used by `README.md` and `docs/guide.md` | In repo. Rendered from a live session's `tmux capture-pane -e` by `.planning/live/ansi2png.py`; the source captures are in `e2e-evidence/run-20261012-voice-theme-motion/shots/` |
-| Research reference media | Screenshots, mp4 and gif of other tools, linked from `docs/orchestra-research-report.md` and `docs/orchestra-prd.md` | Remote, third-party; reference only, not reusable |
-| PRD map diagrams | Mermaid 11 and `@mermaid-js/layout-elk` from jsDelivr, `docs/orchestra-prd-map.html` | Remote |
-| Sample performance | `prototype/scenario.js` | In repo |
-| Eval case and scaffold | `plugin/evals/ensemble-records/` | In repo |
-| Test fixture events | `plugin/tests/ledger.test.ts` | In repo |
-| Narration model | Claude through the Agent SDK (`@anthropic-ai/claude-agent-sdk` 0.3.296, installed with `npm install --prefix plugin/narrate`) | Installed on demand; uses your Claude Code login |
-| Voice | ElevenLabs, `plugin/narrate/voice.mjs`, no npm dependency | **Needs your key and voice** |
+| State glyphs `· ♪ ‖ ✓ ✕` | `plugin/hooks/views.js:8` (`GLYPH`) | In code |
+| Score legend glyphs `─ ┊ │┃ ○ ← ● · ◆ ✓ ✕ ‼ ⚠ ?` | `plugin/hooks/views.js:66` (`LEGEND`) | In code |
+| Motion glyphs: notes `♩ ♪ ♫ ♬`, baton `╲ │ ╱ │`, activity bar `▁…█`, join/rest/stop steps | `plugin/hooks/motion.js:8`, `:11`, `:12`, `:14-16` | In code |
+| Handoff arrow `━…▶`, pulse `─…•…─`, held note `♪━━` | `plugin/hooks/motion.js:89` (`travel`), `:49` (`pulse`), `:93` (`sustain`) | In code |
+| Orchestra mark `𝄐` (U+1D110) | `plugin/hooks/views.js:89`, `:161`, `:260`; `plugin/hooks/register.js:1600`; `prototype/app.js:71`, `:398`, `:455`, `:579` | In code. It lies outside the Basic Multilingual Plane, so a terminal font without it draws a box (`docs/orchestra-prototype-design.md` notes this). Nerd Fonts and JetBrains Mono have it |
+| Agent-row mark `◌` (not yet playing) | `plugin/hooks/register.js:1615` | In code |
+| Prototype-only glyphs (`◌` tuning, `→`, `\|`) | `prototype/app.js:10` (`STATE_GLYPH`), `:490` (legend) | In code |
+| Terminal colour tokens (10; dark, light, xterm-256, ANSI) | `plugin/hooks/palette.js:13` (`TOKENS`) | In code |
+| Pane ground (black, white, or Claude Code's under ANSI) | `plugin/hooks/palette.js:79` (`ground`), used at `plugin/hooks/views.js:99` | In code |
+| Agent colours in Claude Code's agent list | `plugin/agents/conductor.md:4` (cyan), `violin.md:5` (blue), `trumpet.md:5` (yellow), `flute.md:5` (green), `timpani.md:5` (red), `cello.md:5` (purple) | In code |
+| Prototype colours and section variables | `prototype/styles.css:18` (`--term-bg`), `:24-28` (sections) | In code |
+| Prototype fonts: Inter, JetBrains Mono | `prototype/index.html:9` (Google Fonts); fallbacks `prototype/styles.css:33-34` | Remote; offline the fallbacks are used |
+| PRD map fonts: Instrument Serif, IBM Plex Sans, IBM Plex Mono | `docs/orchestra-prd-map.html:9` (one `css2` URL) | Remote |
+| PRD map instrument colours | `docs/orchestra-prd-map.html:158-160`, `:483-492` (copied from `palette.js`) | In code, but it will drift if the palette changes |
+| PRD map diagrams | `docs/orchestra-prd-map.html:573-574` (Mermaid 11, `@mermaid-js/layout-elk`, jsDelivr) | Remote |
+| Plugin directory icon | Not set: `plugin/.claude-plugin/plugin.json:1-47` has no `icon` | Optional; see the icon entry under "Why each missing asset cannot be made" |
+| README and guide screenshots | `docs/screenshots/*.png`, embedded at `README.md:15` and in `docs/guide.md` section 4 | In repo. Rendered by `.planning/live/ansi2png.py` from a live session's `tmux capture-pane -e`; the captures are in `e2e-evidence/run-20261012-voice-theme-motion/shots/` |
+| Research reference media | Linked from `docs/orchestra-research-report.md` and `docs/orchestra-prd.md` (third-party screenshots, mp4, gif) | Remote, third-party; reference only, not reusable |
+| Sample performance | `prototype/scenario.js:29` (`OPENING`) and `continuation` | In repo |
+| Eval case and scaffold | `plugin/evals/ensemble-records/case.yaml:2`, `:7`; `scaffold.sh` | In repo |
+| Test fixture events | `plugin/tests/ledger.test.ts:29` | In repo |
+| Narration model | `plugin/narrate/narrate.mjs:5` (import), `:7` (`claude-opus-5-5`); `plugin/narrate/package.json:7` (`@anthropic-ai/claude-agent-sdk` 0.3.296) | Installed on demand (`npm install --prefix plugin/narrate`); uses your Claude Code login |
+| Voice | `plugin/narrate/voice.mjs:15` (`api.elevenlabs.io`), `:18` (default model); options `plugin/.claude-plugin/plugin.json:18-45` (`voiceCoda` to `voiceModel`) | **Needs your key and voice** |
 
 One unrelated finding: `.codex/config.toml` names the package `@modelcontextprotocol/serversequentialthinking`; the published name is `@modelcontextprotocol/server-sequential-thinking`. Orchestra does not use that file.

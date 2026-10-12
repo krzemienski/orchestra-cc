@@ -114,19 +114,43 @@ One staff per musician, with the newest event on the right. The header says wher
 | `✓` `✕` | Done / failed |
 | `‼` `⚠` `?` | A conflict / a stale read / a decision you made |
 
-### The pane: Artifacts and Coda
+### The pane: Artifacts
 
-**Artifacts** lists every file the musicians touched, newest first. Select one to see each version's author, base version, line delta and SHA-256, who read which version, and any conflicts on it.
+![Artifacts tab: config/limits.json opened, with its versions, reads and the conflict you decided](screenshots/artifacts-tab.png)
 
-**Coda** is computed from the ledger alone: who contributed what, which artifacts changed, handoffs, conflicts with your decisions, failures, stale reads and background commands. It is also written to `.orchestra/performances/<session>-coda.md`.
+Every file the musicians touched, newest first, with its current version and who wrote it. Select `▸ details` to see each version's author, base version, line delta and SHA-256, who read which version and at which ledger event, and any conflicts on it with your decision. Above, two trumpets read `config/limits.json` at v0; Trumpet 2 wrote v1 first, so Trumpet's edit from v0 was a conflict, and it was sent back to re-read.
 
-### Everywhere else
+### The pane: Coda
 
-- **Status line** under the prompt, for example `Orchestra · 2 playing · 1 done · 3 artifacts changed · 1 stale`.
-- **Spinner**: who is playing what, on which file, for how long, and who is waiting on you, for example `· 2 playing: Trumpet Edit limiter.js · 4s · Flute after Read (1s)`.
-- **Toasts** in the top right when a musician joins and rests, when a tool call that ran 3 s or more finishes (`Timpani finished Bash npm test · 12s`), and for handoffs, stale reads, failures, decided conflicts and a ready coda.
-- **Agent rows** in the transcript are labelled with the instrument, role, state and measures.
-- **Conflicts**: when a musician is about to overwrite a newer version than the one it saw, Orchestra holds the write and asks you in Claude Code's own question dialog. You can choose *Let it write*, *Send it back to re-read*, or *Show both versions*.
+![Coda tab: task, status, who contributed what, artifacts changed with their hashes, handoffs, conflicts and failures](screenshots/coda-tab.png)
+
+Computed from the ledger alone: the task, the status line, who contributed what, which artifacts changed (with their current SHA-256), handoffs, conflicts with your decisions, failures, stale reads and background commands. It is also written to `.orchestra/performances/<session>-coda.md`. If the spoken coda is on, its result follows under **Spoken by ElevenLabs**.
+
+### Conflicts: the question dialog
+
+![A held write: what the other musician added, what this one wants to change, and Claude Code's question dialog](screenshots/conflict-dialog.png)
+
+When a musician is about to overwrite a newer version than the one it saw, Orchestra holds the write and asks you in Claude Code's own question dialog. *Let it write* lets it land; *Send it back to re-read* denies it and tells the musician to read the file again and reapply its change; *Show both versions* (the state above) draws, above the question, the lines the other musician added since this one's version and the change this one wants to make, then asks again. In a `claude -p` run nobody can answer, so the write is sent back.
+
+### Toasts
+
+![Two toasts: Trumpet 3 joins the ensemble as Implementer, and a handoff of config/limits.json v1 from Trumpet 2](screenshots/toasts.png)
+
+In the top right of the transcript: when a musician joins (with its role) and rests (with its measures, reads and writes), when a tool call that ran 3 s or more finishes (`Timpani finished Bash npm test · 12s`), and for handoffs, stale reads, failures, decided conflicts and a ready coda.
+
+### Agent rows, spinner and band
+
+![An Agent row labelled Trumpet 3 · Implementer · 0 measures, the spinner naming who plays, and the band](screenshots/agent-row-spinner-band.png)
+
+- **Agent rows** in the transcript carry a line above Claude Code's own: the musician's mark, name, role and measures, in its colour. When several parts start in one message, Claude Code draws one summary row a mod cannot redraw, so those are not labelled.
+- **The spinner** names who is playing what, on which file, for how long, what a musician between calls last finished, and who is waiting on you: `· 1 playing: Trumpet 3`, or `· 2 playing: Trumpet Edit limiter.js · 4s · Flute after Read (1s)`.
+- **The band** sits under it, as described above.
+
+### Status line
+
+![The status line under the prompt](screenshots/status-line.png)
+
+Under the prompt: `Orchestra · 1 playing · 3 done · 3 artifacts changed`, with failures, conflicts and stale reads added when there are any.
 
 ## 5. Colours and your theme
 

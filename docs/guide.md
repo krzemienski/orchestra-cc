@@ -105,7 +105,11 @@ Elapsed time runs from the start of the call to the newest event the ledger reco
 
 ### Agent rows (P0-14)
 
-Claude Code 2.1.296 runs parts the conductor starts together as background agents. It draws one block for them, `⏺ 3 background agents launched` with a line per part, not an Agent row per part (W0 capture, `e2e-evidence/run-20261013T181747-v020-w0/step-24`). A mod can only label an Agent row, so these parts carry no Orchestra label in the transcript; each one's second line is on the band and in the Ensemble tab instead. An Agent row the engine does draw for a single part gets `<Name> · <Role>` over the same second line.
+![Agent rows during the ten-part run: each part labelled with its name and role over what it is doing now](screenshots/agent-rows.png)
+
+Every part has its own Agent row in the transcript, and Orchestra draws two lines above Claude Code's own: `<Name> · <Role>`, then the same second line the band shows, for example `Trumpet · Implementer` over `└ ♪ Bash sleep 45 · 7s`. The line is redrawn as the part goes on, and ends as `└ ✓ done · 6 measures · 3 reads · 1 write · 9s` (fix2 run, step-18).
+
+Claude Code draws several Agent calls made in one message as one block (`⏺ 3 background agents launched`, or `⏺ Running 3 agents…` when fork mode is off) and does not draw what a mod returns for them (W0 run, step-24; fix2 run, probes). In an interactive session every part runs in the background anyway, so the conductor starts each part with its own Agent call, one message after another; the parts still play at once, and each gets its own labelled row. In the ten-part run all ten rows were labelled, `Trumpet · Implementer` to `Flute 2 · Scribe`, and every playing row's second line matched the ledger (fix2 run, step-23: 251 of 251 rows across band, Ensemble and Agent rows). If you ask the conductor to start parts in one message, Claude Code groups them and the band and the Ensemble tab carry each line.
 
 ### The band above the prompt (P0-15)
 
@@ -116,6 +120,8 @@ Claude Code 2.1.296 runs parts the conductor starts together as background agent
 - **Rows past the band's room fold** into `… 2 more · /orchestra`. Claude Code decides the room: at 160×48 the inline view showed all ten rows (step-71), and the fullscreen view (`CLAUDE_CODE_NO_FLICKER=1`), which keeps its agent list in the same bottom half, gave the band ten rows, so eight musicians and the fold (step-20). When it gives one row, the fold joins line 1:
 
 ![The band at 100×20: the rollup and the fold on one row](screenshots/band-folded-100x20.png)
+
+While Claude Code lists its running agents in a short terminal it can give the band no rows at all (seen at 100×20 in the fullscreen view). Then the status line under the prompt carries the rollup and the fold instead, `orchestra: Orchestra · 2 playing · … 2 more · /orchestra`, and the row Orchestra draws above a conflict question is the band's rollup, `𝄐 Orchestra  2 playing · 1 waiting on you · 6 done · 1 failed · ‼ 1 conflict`. In the 100×20 run every frame with a musician playing showed one or the other (fix2 run, step-41: 78 of 78).
 
 Only the free text is ever cut, with `…`. Glyph, name and time keep their columns.
 
@@ -214,9 +220,9 @@ Which colours you get depends on your Claude Code theme (`/theme`) and on what t
 | Dark theme, `COLORTERM=truecolor` | Hex values measured on black | Black | Trumpet `38;2;242;185;80`, ground `48;2;0;0;0` |
 | Light theme, `COLORTERM=truecolor` | Hex values measured on white | White | Trumpet `38;2;138;90;0`, ground `48;2;255;255;255` |
 | `TERM` contains `256`, no truecolor | The nearest xterm-256 entry | Black | Trumpet `38;5;215`, ground `48;5;16` |
-| A terminal with neither | The terminal's own 16 colours | Claude Code's own | `36`, `32`, `31`, `93`; no `38;` code |
-| An ANSI theme (`dark-ansi`, `light-ansi`) | Colour names, which Claude Code itself draws as 24-bit colours on a truecolor terminal | Claude Code's own | `yellow` drawn as `38;2;245;217;10` |
-| A theme Orchestra cannot read or name (here `auto`) | Colour names | Nothing painted: Claude Code's own `#262626` | ground `48;2;38;38;38` only |
+| A terminal with neither (`TERM=xterm`) | Claude Code theme keys, drawn in 16 colours | Claude Code's own | `31 32 36 37 93 95`; no `38;` code |
+| An ANSI theme (`dark-ansi`, `light-ansi`) | Claude Code theme keys (`warning`, `success`, `error`, `planMode`, `suggestion`, `merged`), which the theme draws as 16-colour codes | Claude Code's own | `91 92 93 96 37`; no `38;5;` or `38;2;` code (fix2 run, step-45) |
+| A theme Orchestra cannot read or name (here `auto`) | Claude Code theme keys, drawn as your real theme draws them | Nothing painted by Orchestra. An inline pane has no background code at all (fix2 run, step-46); a docked pane keeps Claude Code's own fill, its theme's `composerSidebarBackground`, which no mod can clear ([anthropics/claude-code#100102](https://github.com/anthropics/claude-code/issues/100102)) | band and inline pane: no `48;` code |
 
 A change of theme is picked up within 2 seconds. To check what your terminal says, run `echo $COLORTERM $TERM`. tmux passes 256 colours or truecolor depending on its own settings, so a capture in tmux may not show what your terminal draws directly.
 
@@ -264,6 +270,6 @@ The musicians may also write notes and logs under `.orchestra/notes/` and `.orch
 | Colours look wrong or flat | Run `echo $COLORTERM $TERM`, and see the table in [section 5](#5-colours-and-your-theme). An ANSI theme uses your terminal's 16 colours |
 | Pressing `2` types into the prompt | The pane does not have focus. Empty the prompt, press Ctrl+X then Tab, or click the tab |
 | A musician's write was "sent back" | It tried to overwrite a newer version than the one it read. It re-reads the file and reapplies its change; the coda records it |
-| No band while Claude Code lists its running agents in a short terminal | Claude Code gives the band no rows then (seen at 100×20). The status line keeps the counts; `/orchestra` opens the pane |
+| No band while Claude Code lists its running agents in a short terminal | Claude Code gives the band no rows then (seen at 100×20). The status line carries the rollup and `… N more · /orchestra`; `/orchestra` opens the pane |
 | `/orchestra voice` says `Unknown argument` | Voice was removed in 0.2.0; Orchestra makes no sound |
 | An edit to the mod does nothing | With `--plugin-dir`, the mod reloads at the end of the current turn. The ledger is replayed, so nothing is lost |

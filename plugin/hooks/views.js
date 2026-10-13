@@ -150,7 +150,9 @@ const KEY_HINTS = {
   artifacts: '1-4 tabs · tab select · enter details · ↑↓ scroll · esc close',
   coda: '1-4 tabs · ↑↓ scroll · esc close',
 }
-export const keyHints = (el, tab) => dim(el, KEY_HINTS[tab] ?? KEY_HINTS.ensemble)
+// While the tab scrolls, where the window is goes first on the same row, so a pane only a few rows
+// tall (inline in a short terminal) still shows its keys.
+export const keyHints = (el, tab, where = '') => dim(el, `${where ? `${where} · ` : ''}${KEY_HINTS[tab] ?? KEY_HINTS.ensemble}`)
 
 // The line logged when the conductor's turn ends: the same counts as the coda file.
 export function outcomeLine(state, ms) {
@@ -174,11 +176,11 @@ export function pane(el, state, view, width, bodyRows) {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
   const body = render(el, state, view, width)
   // The body sits on the ground its colours were measured on, not on Claude Code's grey pane fill.
-  const rows = paneWindow(el, view, body, bodyRows)
+  const { rows, where } = paneWindow(el, view, body, bodyRows)
   // While the tab scrolls, the tree's last row is the hidden one (see paneWindow), so the key hints
   // go just above it and stay the last row shown.
   const hidden = view.maxOffset ? [blank(el)] : []
-  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...rows, keyHints(el, view.tab), ...hidden] })
+  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...rows, keyHints(el, view.tab, where), ...hidden] })
 }
 
 const tabBar = (el, view) => el.Box({
@@ -200,14 +202,18 @@ function paneWindow(el, view, rows, bodyRows) {
   while (end > 1 && blanks.has(rows[end - 1])) end -= 1
   const body = rows.slice(0, end)
   if (view.windowTab !== view.tab) Object.assign(view, { windowTab: view.tab, offset: 0 })
-  const shown = Math.max(1, (bodyRows || 0) - HEADER_ROWS - FOOTER_ROWS - 1)
+  // Where the window is gets its own row, unless the pane is too short for that and a row of the
+  // tab (inline in a short terminal): then it goes on the key-hint row.
+  const tight = Boolean(bodyRows) && bodyRows - HEADER_ROWS - FOOTER_ROWS < 3
+  const shown = Math.max(1, (bodyRows || 0) - HEADER_ROWS - FOOTER_ROWS - (tight ? 0 : 1))
   view.maxOffset = bodyRows && body.length > shown + 1 ? body.length - shown : 0
   view.page = shown
   view.offset = Math.min(view.offset || 0, view.maxOffset)
-  if (!view.maxOffset) return body
+  if (!view.maxOffset) return { rows: body, where: '' }
   const below = body.length - view.offset - shown
-  const where = [view.offset ? `↑ ${view.offset} more above` : null, below ? `↓ ${below} more below` : 'end'].filter(Boolean)
-  return [...body.slice(view.offset, view.offset + shown), dim(el, `${where.join(' · ')} (↑↓ to scroll)`)]
+  const where = [view.offset ? `↑ ${view.offset} more above` : null, below ? `↓ ${below} more below` : 'end'].filter(Boolean).join(' · ')
+  const visible = body.slice(view.offset, view.offset + shown)
+  return tight ? { rows: visible, where } : { rows: [...visible, dim(el, where)], where: '' }
 }
 
 // Moves the pane's window for a `ui.scroll` hook on the pane. The engine sizes Home and End

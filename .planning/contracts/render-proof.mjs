@@ -34,7 +34,7 @@ const out = []
 const draw = (label, now, tab) => {
   const state = at(now)
   const view = { tab, now: state.events.at(-1).ts, selected: null, setTab() {}, select() {} }
-  const b = band(el, state, 80)
+  const b = band(el, state, 80, view.now)
   const p = pane(el, state, view, 80)
   // The band sits on the terminal's own background; the pane body is painted the palette's ground
   // (black on a dark terminal) once, at its root, over Claude Code's grey pane fill.
@@ -46,14 +46,19 @@ const draw = (label, now, tab) => {
   return { band: text(b), lines }
 }
 
-// 1. A finished call reports tool, file and duration; an open one shows how long it had run at the
-// newest event.
+// 1. Each musician's second line: an open call with its time at the newest event, or the part
+// brief between calls. The band's first line is the rollup, then one row per musician playing.
 const ens = draw('activity', t0 + 6100, 'ensemble')
-assert.ok(ens.lines.some((l) => l.includes('last: Edit src/limiter.ts · 2s')), 'trumpet seat shows its last call and duration')
-assert.ok(ens.lines.some((l) => l.includes('Write docs/limits.md · 0s')), 'flute seat shows the open call, timed at the newest event')
-assert.ok(ens.lines.some((l) => l.includes('Trumpet · Edit src/limiter.ts · 2s')), 'ticker reports the finished call with its duration')
+assert.ok(ens.lines.some((l) => /└ Write docs\/limits\.md\s*· 0s/.test(l)), 'flute row shows its open call, timed at the newest event')
+assert.ok(ens.lines.some((l) => l.includes('└ fix the limiter')), 'trumpet between calls shows its part brief')
+assert.ok(ens.lines[ens.lines.length - 1].startsWith('1-4 tabs'), 'the key hints are the last row')
+assert.ok(ens.band.startsWith('𝄐 Orchestra  2 playing'), `band line 1 is the rollup: ${ens.band}`)
 
-// 2. Nothing moves without an event: the same ledger drawn again after the clock has moved on a
+// 2. Rows past the band's room fold into one row that points at the pane.
+const folded = rows(band(el, at(t0 + 6100), 80, t0 + 4100, 2))
+assert.deepEqual(folded.map((l) => l.trim()), ['𝄐 Orchestra  2 playing', '… 2 more · /orchestra'], `band folds: ${JSON.stringify(folded)}`)
+
+// 3. Nothing moves without an event: the same ledger drawn again after the clock has moved on a
 // minute gives the same band, Ensemble and Score, character for character.
 const realNow = Date.now
 for (const tab of ['ensemble', 'score']) {
@@ -65,7 +70,7 @@ for (const tab of ['ensemble', 'score']) {
   assert.deepEqual(again.lines, first.lines, `${tab} is the same a minute later`)
 }
 
-// 3. The band's mark is still.
+// 4. The band's mark is still.
 assert.ok(ens.band.startsWith('\u{1D110} Orchestra'), 'band shows the still mark')
 
 console.log(out.join('\n'))

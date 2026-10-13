@@ -16,7 +16,7 @@
  * @typedef {{ agent: string, path: string, readV: number, currentV: number, writer: string, products: string[], seq: number,
  *   cleared: boolean, clearedSeq?: number, clearedBy?: string }} Stale
  * @typedef {{ from: string, to: string, path: string, v: number, seq: number, via: string }} Handoff
- * @typedef {{ agent: string, tool: string, target: string, error?: string, seq: number, recoveredSeq: number|null, recoveredBy?: string }} ToolFailure
+ * @typedef {{ agent: string, tool: string, target: string, error?: string, line?: string, seq: number, recoveredSeq: number|null, recoveredBy?: string }} ToolFailure
  * @typedef {Record<string, any> & { seq: number, ts: number, type: string }} LedgerEvent
  * @typedef {{ session: string|null, cwd: string|null, task: string|null, events: LedgerEvent[],
  *   musicians: Record<string, Musician>, order: string[], artifacts: Record<string, Artifact>,
@@ -259,7 +259,7 @@ const handlers = {
       // unchanged since it was read, say): the decision did not land.
       const allowed = state.conflicts.filter((c) => c.agent === e.agent && c.path === e.target && (!c.tool || c.tool === e.tool) && c.choice === 'overwrite' && !c.landed && !c.refused).at(-1)
       if (allowed) allowed.refused = String(e.error || 'the write failed')
-      state.toolFailures.push({ agent: e.agent, tool: e.tool, target: e.target, error: e.error, seq: e.seq, recoveredSeq: null })
+      state.toolFailures.push({ agent: e.agent, tool: e.tool, target: e.target, error: e.error, line: e.line, seq: e.seq, recoveredSeq: null })
       return
     }
     // A failed call is recovered when any musician later runs the same call successfully.
@@ -516,36 +516,6 @@ export function liveHandoff(state) {
   return h && last && last.seq - h.seq <= HANDOFF_WINDOW ? h : null
 }
 
-// One ledger event in words; null for events that say nothing to a person.
-export function eventText(state, e) {
-  const who = e.agent ? nameOf(state, e.agent) : 'Orchestra'
-  const v = (path, hash) => {
-    const i = state.artifacts[path]?.versions.findIndex((x) => x.hash === hash)
-    return i >= 0 ? ` v${i}` : ''
-  }
-  switch (e.type) {
-    case 'part.assigned': return `Conductor → ${who}: ${e.description || 'a part'}`
-    case 'artifact.read': return `${who} ○ read ${e.path}${v(e.path, e.hash)}`
-    case 'artifact.write': return `${who} ● wrote ${e.path}${v(e.path, e.hash)}${e.via === 'bash' ? ' via Bash' : ''}`
-    case 'tool.call': return e.agent === CONDUCTOR ? null : `${who} · ${e.tool}${e.target ? ` ${e.target}` : ''}`
-    case 'tool.result': {
-      if (!e.ok) return `${who} ✕ ${e.tool} failed`
-      const done = lastCall(state, e.agent)
-      return done ? `${who} · ${e.tool}${e.target ? ` ${e.target}` : ''} · ${elapsed(done.ms)}` : null
-    }
-    case 'conflict.resolved': return `You decided a conflict: ${e.choice}${e.auto ? ' (automatic)' : ''}`
-    case 'part.done': return `${who} ✓ finished the part`
-    case 'part.failed': return `${who} ✕ part ended: ${e.reason}`
-    case 'background.started': return `${who} started a background command`
-    case 'background.ended': return `A background command ended (${e.status})`
-    default: return null
-  }
-}
-
-// The newest events in words, newest first.
-export const recent = (state, n) => state.events.slice(-60).map((e) => ({ seq: e.seq, text: eventText(state, e) }))
-  .filter((x) => x.text).slice(-n).reverse()
-
 export function fold(events) {
   return events.reduce(apply, emptyState())
 }
@@ -571,9 +541,30 @@ export const authorOf = (state, v) => (v?.agent === 'shell' && v.candidates?.len
   ? `a shell command run by ${v.candidates.map((k) => nameOf(state, k)).join(' or ')}`
   : nameOf(state, v?.agent))
 
+// A musician's newest failed call that nobody has since run successfully, or null.
+export const openFailure = (state, key) => state.toolFailures.findLast((f) => f.agent === key && f.recoveredSeq === null) ?? null
+
+// The state every surface shows for a musician: a part that ended with one of its calls still
+// failed counts as failed, not done, so a failing command is never reported as a finished part.
+export const standing = (state, m) => (m.state === 'done' && openFailure(state, m.key) ? 'failed' : m.state)
+
+// What went wrong, in one line: the reason a part ended early, or the first line of its failed call.
+export function failureLine(state, m) {
+  if (m.state === 'failed') return m.failure || 'the part ended early'
+  const f = openFailure(state, m.key)
+  return f ? `${f.tool}${f.target ? ` ${f.target}` : ''}: ${f.line || f.error || 'failed'}` : ''
+}
+
+// How long a musician's part took, from its assignment to its end.
+export function partMs(state, key) {
+  const start = state.events.find((e) => e.agent === key && e.type === 'part.assigned')
+  const end = state.events.findLast((e) => e.agent === key && (e.type === 'part.done' || e.type === 'part.failed'))
+  return start && end ? end.ts - start.ts : null
+}
+
 export function counts(state) {
   const ms = musicians(state)
-  const by = (s) => ms.filter((m) => m.state === s).length
+  const by = (s) => ms.filter((m) => standing(state, m) === s).length
   return {
     playing: by('playing'), waiting: by('waiting'), done: by('done'), failed: by('failed'),
     changed: Object.values(state.artifacts).filter((a) => a.versions.some((v) => v.agent !== 'repo')).length,
@@ -598,13 +589,14 @@ export function rollup(state) {
 
 export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
+// The status line: the rollup's counts, zero counts left out, with the files changed.
 export function statusLine(state) {
   const c = counts(state)
   return [
     'Orchestra',
-    `${c.playing} playing`,
-    c.waiting ? `${c.waiting} waiting` : null,
-    `${c.done} done`,
+    c.playing ? `${c.playing} playing` : null,
+    c.waiting ? `${c.waiting} waiting on you` : null,
+    c.done ? `${c.done} done` : null,
     c.failed ? `${c.failed} failed` : null,
     `${plural(c.changed, 'artifact')} changed`,
     c.openConflicts ? plural(c.openConflicts, 'conflict') : null,

@@ -1,7 +1,7 @@
 // What Orchestra draws. Every function takes the element constructors the mod resolved
 // for the surface, the folded ledger state, and the pane's own view state.
 
-import { CONDUCTOR, activity as activityOf, artifactStatus, coda, codaSections, counts, elapsed, hashLabel, lastCall, liveHandoff, musicians, nameOf, plural, recent, roster, statusLine } from './ledger.js'
+import { CONDUCTOR, artifactStatus, authorOf, coda, codaSections, counts, currentCall, elapsed, failureLine, hashLabel, lastCalls, liveHandoff, musicians, nameOf, partMs, plural, rollup, roster, standing, statusLine } from './ledger.js'
 import { ground, paint } from './palette.js'
 
 export const GLYPH = { resting: '·', playing: '♪', waiting: '‖', done: '✓', failed: '✕' }
@@ -10,8 +10,11 @@ const STATE_TOKEN = { playing: 'ok', waiting: 'warn', done: null, failed: 'dange
 const SCORE_NAME_COLUMNS = 11
 const READS_SHOWN = 8
 const HELD_LINES = 14
-const RECENT_SHOWN = 6
 const BAR_EVENTS = 8
+const CALLS_SHOWN = 5
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+// What a state is called where a row names it.
+const STATE_WORD = { resting: 'resting', playing: 'playing', waiting: 'waiting on you', done: 'done', failed: 'failed' }
 
 export const short = (text, n) => {
   const s = String(text ?? '').replace(/\s+/g, ' ').trim()
@@ -64,35 +67,110 @@ const wrapItems = (items, cols) => items.reduce((rows, item) => {
 
 const LEGEND = ['─ rest', '┊ bar line', '○ read', '← used another\'s work', '● write', '· tool', '◆ assigned', '✓ done', '✕ failed', '‼ conflict', '⚠ stale', '? you decided']
 
-// A musician's state mark, in its fixed glyph.
-function glyphOf(el, m) {
-  const g = GLYPH[m.state]
-  return STATE_TOKEN[m.state] ? tone(el, STATE_TOKEN[m.state], g) : el.Text({ children: [g] })
+// What a musician is doing, as every row draws it: its state's glyph, the tool or word in the
+// second column, the free text, and the time. Elapsed times run to `now`, the time of the newest
+// recorded event, so they move only when an event arrives.
+export function doing(state, m, now) {
+  const st = standing(state, m)
+  const base = { state: st, glyph: GLYPH[st], token: STATE_TOKEN[st] }
+  if (st === 'done') {
+    const ms = partMs(state, m.key)
+    return { ...base, word: 'done', text: `${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, time: ms === null ? '' : elapsed(ms) }
+  }
+  if (st === 'failed') return { ...base, word: 'failed', text: failureLine(state, m), time: '' }
+  if (st === 'waiting') {
+    const c = state.conflicts.findLast((x) => x.agent === m.key && !x.resolved)
+    const by = c ? authorOf(state, state.artifacts[c.path]?.versions[c.current]) : ''
+    return { ...base, word: 'held', text: c ? `${c.path}: ${by} wrote v${c.current} ${c.base === null ? 'and you never read it' : `since you read v${c.base}`}` : 'waiting on you', time: '' }
+  }
+  const call = m.tool ? currentCall(state, m.key) : null
+  if (call) {
+    const seen = m.seen[call.target]
+    const from = WRITE_TOOLS.has(call.tool) && seen !== undefined ? ` from v${seen}` : ''
+    return { ...base, word: call.tool, text: `${call.target}${from}`, time: now ? elapsed(Math.max(0, now - call.ts)) : '' }
+  }
+  return { ...base, word: '', text: m.part || (m.key === CONDUCTOR ? 'Coordinating the ensemble' : m.role), time: '' }
 }
 
-export function band(el, state, width) {
-  const chunks = musicians(state).map((m) => el.Text({
-    key: m.key,
-    children: [who(el, m), ' ', glyphOf(el, m), ` ${m.measures}${m.tool ? ` ${m.tool.tool}` : ''}`],
-  }))
-  const c = counts(state)
-  const alerts = [
-    c.openConflicts ? tone(el, 'danger', `‼ ${plural(c.openConflicts, 'conflict')}`, true) : null,
-    c.openStale ? tone(el, 'warn', `⚠ ${c.openStale} stale`) : null,
-  ].filter(Boolean)
-  return el.Box({
-    flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width,
-    children: [dim(el, '𝄐 Orchestra'), ...chunks, ...alerts],
-  })
+// `doing` as one line: `Edit config/limits.json from v0 · 12s`, `done · 4 measures · … · 41s`,
+// `failed · <first error line>`.
+export const doingText = (d) => {
+  const what = d.state === 'done' || d.state === 'failed' ? `${d.word} · ${d.text}` : [d.word, d.text].filter(Boolean).join(' ')
+  return `${what}${d.time ? ` · ${d.time}` : ''}`
 }
 
+// The Agent row's two lines for a musician: who and in what role, then what it is doing.
+export function agentRows(state, m, now) {
+  const d = doing(state, m, now)
+  return { title: `${m.name} · ${m.role}`, detail: `└ ${d.glyph} ${doingText(d)}`, token: d.token }
+}
+
+function glyphOf(el, m, st) {
+  const g = GLYPH[st]
+  return STATE_TOKEN[st] ? tone(el, STATE_TOKEN[st], g) : el.Text({ children: [g] })
+}
+
+const rollupText = (el, state) => rollup(state).flatMap((x, i) => [i ? dim(el, ' · ') : '', x.token ? tone(el, x.token, x.text, x.bold) : el.Text({ children: [x.text] })])
+
+// Band and Ensemble rows keep the glyph, the name and the time where they are; only the free text
+// gives way, cut with `…`.
+const WORD_COLUMNS = 6
+function row(el, key, width, nameCols, m, d) {
+  return el.Box({ key, flexDirection: 'row', width, children: [
+    el.Box({ flexShrink: 0, width: 2, children: [glyphOf(el, m, d.state)] }),
+    el.Box({ flexShrink: 0, width: nameCols + 2, children: [who(el, m)] }),
+    el.Box({ flexShrink: 0, width: WORD_COLUMNS + 1, children: [d.token ? tone(el, d.token, d.word) : el.Text({ children: [d.word] })] }),
+    el.Box({ flexShrink: 1, children: [el.Text({ wrap: 'truncate-end', dimColor: d.state === 'resting', children: [d.text] })] }),
+    d.time ? el.Box({ flexShrink: 0, children: [dim(el, ` · ${d.time}`)] }) : '',
+  ].filter(Boolean) })
+}
+
+// The band: the rollup, then one row per musician not yet done, in the order parts were assigned.
+// Rows past `maxRows` fold into one `… N more · /orchestra` row, so the band never scrolls.
+export function band(el, state, width, now, maxRows = Infinity) {
+  const live = musicians(state).filter((m) => standing(state, m) !== 'done')
+  const room = Math.max(1, maxRows - 1)
+  const shown = live.length > room ? live.slice(0, Math.max(0, room - 1)) : live
+  const nameCols = Math.max(0, ...shown.map((m) => m.name.length))
+  return el.Box({ flexDirection: 'column', width, children: [
+    line(el, [tone(el, 'conductor', '𝄐 Orchestra', true), '  ', ...rollupText(el, state)]),
+    ...shown.map((m) => row(el, `band-${m.key}`, width, nameCols, m, doing(state, m, now))),
+    ...(shown.length < live.length ? [dim(el, `  … ${live.length - shown.length} more · /orchestra`)] : []),
+  ] })
+}
+
+// The pane's last row: the keys the focused tab answers to.
+const KEY_HINTS = {
+  ensemble: '1-4 tabs · tab select · enter details · ↑↓ scroll · esc close',
+  score: '1-4 tabs · ↑↓ scroll · esc close',
+  artifacts: '1-4 tabs · tab select · enter details · ↑↓ scroll · esc close',
+  coda: '1-4 tabs · ↑↓ scroll · esc close',
+}
+export const keyHints = (el, tab) => dim(el, KEY_HINTS[tab] ?? KEY_HINTS.ensemble)
+
+// The line logged when the conductor's turn ends: the same counts as the coda file.
+export function outcomeLine(state, ms) {
+  const c = coda(state)
+  return [
+    '𝄐 Coda',
+    plural(musicians(state).length, 'musician'),
+    plural(c.changed.length, 'file'),
+    plural(c.conflicts.length, 'conflict'),
+    `${c.counts.failed} failed`,
+    elapsed(ms),
+    '/orchestra coda',
+  ].join(' · ')
+}
+
+// The tab bar and the blank under it; the key hints take the last row.
 const HEADER_ROWS = 2
+const FOOTER_ROWS = 1
 
 export function pane(el, state, view, width, bodyRows) {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
   const body = render(el, state, view, width)
   // The body sits on the ground its colours were measured on, not on Claude Code's grey pane fill.
-  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows)] })
+  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows), keyHints(el, view.tab)] })
 }
 
 const tabBar = (el, view) => el.Box({
@@ -113,7 +191,7 @@ function paneWindow(el, view, rows, bodyRows) {
   while (end > 1 && blanks.has(rows[end - 1])) end -= 1
   const body = rows.slice(0, end)
   if (view.windowTab !== view.tab) Object.assign(view, { windowTab: view.tab, offset: 0 })
-  const shown = Math.max(1, (bodyRows || 0) - HEADER_ROWS - 1)
+  const shown = Math.max(1, (bodyRows || 0) - HEADER_ROWS - FOOTER_ROWS - 1)
   view.maxOffset = bodyRows && body.length > shown + 1 ? body.length - shown : 0
   view.page = shown
   view.offset = Math.min(view.offset || 0, view.maxOffset)
@@ -141,31 +219,10 @@ const detailsButton = (el, view, type, id) => el.Button({
   onPress: () => view.select(type, id),
 })
 
+// The Ensemble tab: the rollup, the newest handoff, then every musician, conductor first, as a
+// two-line row with its counts; Enter on a name opens its details.
 function ensemble(el, state, view, width) {
-  return [...stage(el, state, view, width), blank(el), ...roster(state).flatMap((key) => seat(el, state, view, key, width)), ...ticker(el, state, width)]
-}
-
-// The conductor above the section, and each musician's state.
-function stage(el, state, view, width) {
-  const c = counts(state)
-  const tally = `${c.playing} playing${c.waiting ? ` · ${c.waiting} waiting` : ''} · ${c.done} done${c.failed ? ` · ${c.failed} failed` : ''}`
-  return [
-    line(el, [tone(el, 'conductor', '\u{1D110} Conductor', true), dim(el, `  ${tally}`)]),
-    el.Box({ key: 'section', flexDirection: 'row', flexWrap: 'wrap', columnGap: 3, width, children: musicians(state).map((m) => el.Text({
-      key: `chair-${m.key}`, children: [who(el, m), ' ', glyphOf(el, m), dim(el, ` ${CHAIR_WORD[m.state] ?? m.state}`)],
-    })) }),
-    ...handoffLine(el, state, width),
-  ]
-}
-
-// How a chair reads on the stage: a musician joins when assigned, plays, waits on you, rests when done.
-const CHAIR_WORD = { resting: 'joining', playing: 'playing', waiting: 'waiting on you', done: 'resting', failed: 'stopped' }
-
-// What a musician finished last, and how long it took, once its current call has ended.
-function lastCallLine(el, state, key, width) {
-  const done = lastCall(state, key)
-  if (!done) return null
-  return line(el, [dim(el, `  last: ${short(`${done.tool}${done.target ? ` ${done.target}` : ''} · ${elapsed(done.ms)}`, width - 10)}`)])
+  return [line(el, rollupText(el, state)), ...handoffLine(el, state, width), blank(el), ...roster(state).flatMap((key) => seat(el, state, view, key, width))]
 }
 
 // The newest handoff, from the musician who wrote the version to the one who took it.
@@ -175,52 +232,65 @@ function handoffLine(el, state, width) {
   const from = state.musicians[h.from]
   const to = state.musicians[h.to]
   return [line(el, [
-    from ? tone(el, from.color, `  ${from.name}`, true) : dim(el, `  ${nameOf(state, h.from)}`),
+    from ? tone(el, from.color, from.name, true) : dim(el, nameOf(state, h.from)),
     dim(el, ' → '),
     to ? tone(el, to.color, to.name, true) : el.Text({ children: [nameOf(state, h.to)] }),
     dim(el, ` · ${short(`${h.path} v${h.v}`, Math.max(8, width - 30))}`),
   ])]
 }
 
-// The newest ledger events in words, newest first.
-function ticker(el, state, width) {
-  const items = recent(state, RECENT_SHOWN)
-  if (!items.length) return []
-  return [el.Text({ bold: true, children: ['Recent'] }), ...items.map((x, i) => line(el, [dim(el, `  ${String(x.seq).padStart(4)} `), i ? dim(el, short(x.text, width - 8)) : el.Text({ children: [short(x.text, width - 8)] })]))]
-}
-
 function seat(el, state, view, key, width) {
   const m = state.musicians[key]
-  const activity = activityOf(state, m, view.now) || m.part || (key === CONDUCTOR ? 'Coordinating the ensemble' : m.role)
+  const d = doing(state, m, view.now)
   const stale = state.stale.some((s) => s.agent === key && !s.cleared)
   const open = view.selected?.type === 'musician' && view.selected.id === key
+  const done = d.state === 'done' || d.state === 'failed'
+  const what = done ? `${d.word} · ${d.text}` : [d.word, d.text].filter(Boolean).join(' ')
   return [
-    // Name, mark, state and the button keep their width; only the role gives way, cut to one row.
+    // Glyph, name and state keep their width; only the role gives way.
     el.Box({ key: `seat-${key}`, flexDirection: 'row', columnGap: 1, width, children: [
-      el.Box({ flexShrink: 0, children: [who(el, m)] }),
-      el.Box({ flexShrink: 1, children: [el.Text({ dimColor: true, wrap: 'truncate-end', children: [m.role] })] }),
-      el.Box({ flexShrink: 0, columnGap: 1, flexDirection: 'row', children: [glyphOf(el, m), dim(el, m.state), detailsButton(el, view, 'musician', key)] }),
+      el.Box({ flexShrink: 0, children: [glyphOf(el, m, d.state)] }),
+      el.Box({ flexShrink: 0, children: [el.Button({ key: `pick-musician-${key}`, plain: true, onPress: () => view.select('musician', key), children: [who(el, m)] })] }),
+      el.Box({ flexShrink: 1, children: [el.Text({ dimColor: true, wrap: 'truncate-end', children: [` ${m.role}`] })] }),
+      el.Box({ flexShrink: 0, children: [d.token ? tone(el, d.token, `· ${STATE_WORD[d.state]}`) : dim(el, `· ${STATE_WORD[d.state]}`)] }),
     ] }),
-    line(el, [dim(el, `  ${short(activity, width - 3)}`)]),
-    m.tool ? null : lastCallLine(el, state, key, width),
-    key === CONDUCTOR ? null : line(el, [`  ${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
+    el.Box({ key: `seat-doing-${key}`, flexDirection: 'row', width, children: [
+      el.Box({ flexShrink: 1, children: [el.Text({ wrap: 'truncate-end', dimColor: true, children: [`  └ ${what}`] })] }),
+      d.time ? el.Box({ flexShrink: 0, children: [dim(el, ` · ${d.time}`)] }) : '',
+    ].filter(Boolean) }),
+    key === CONDUCTOR || d.state === 'done' ? null : line(el, [`  ${plural(m.measures, 'measure')} · ${plural(m.reads, 'read')} · ${plural(m.writes, 'write')}`, stale ? tone(el, 'warn', '   ⚠ stale read') : '']),
+    key !== CONDUCTOR && d.state === 'done' && stale ? line(el, [tone(el, 'warn', '  ⚠ stale read')]) : null,
     ...(open ? musicianDetail(el, state, key, width) : []),
     blank(el),
   ].filter(Boolean)
 }
 
+// A musician's details: its part, every version it has seen, its reads and writes with versions,
+// its last calls with their times, its answer, and where its full transcript is.
 function musicianDetail(el, state, key, width) {
   const m = state.musicians[key]
   const seen = Object.entries(m.seen).map(([p, v]) => {
     const now = state.artifacts[p].versions.length - 1
-    return line(el, [`    ${short(p, width - 18)} v${v}`, v < now ? tone(el, 'warn', ` (now v${now})`) : ''])
+    return line(el, [`      ${short(p, width - 20)} v${v}`, v < now ? tone(el, 'warn', ` (now v${now})`) : ''])
   })
+  const touched = Object.values(state.artifacts).flatMap((a) => [
+    ...a.reads.filter((r) => r.agent === key).map((r) => ({ seq: r.seq, text: `read ${a.path} v${r.v}` })),
+    ...a.versions.filter((v) => v.agent === key).map((v) => ({ seq: v.seq, text: `wrote ${a.path} v${v.v}${v.base !== null && v.base !== undefined ? ` from v${v.base}` : ''}` })),
+  ]).sort((x, y) => x.seq - y.seq).map((x) => dim(el, `      ${short(x.text, width - 8)}`))
+  const calls = lastCalls(state, key, CALLS_SHOWN).map((c) => line(el, [
+    `      ${short(`${c.tool}${c.target ? ` ${c.target}` : ''}`, width - 26)}`,
+    c.ok === null ? dim(el, ' · running') : c.ok ? dim(el, ` · ${elapsed(c.ms ?? 0)} ✓`) : tone(el, 'danger', ` · ${elapsed(c.ms ?? 0)} ✕`),
+  ]))
   return [
-    dim(el, `    ${m.name} · ${m.type}`),
-    ...(m.prompt ? para(el, `Part: ${short(m.prompt, 300)}`, '    ', width, { dimColor: true }) : []),
-    el.Text({ children: ['    Versions it has seen:'] }),
+    ...para(el, `Part: ${short(m.prompt || m.part || '(none recorded)', 300)}`, '    ', width, { dimColor: true }),
+    el.Text({ children: ['    Versions seen:'] }),
     ...(seen.length ? seen : [dim(el, '      none yet')]),
+    el.Text({ children: ['    Reads and writes:'] }),
+    ...(touched.length ? touched : [dim(el, '      none yet')]),
+    el.Text({ children: ['    Last calls:'] }),
+    ...(calls.length ? calls : [dim(el, '      none yet')]),
     ...(m.answer ? para(el, `Answer: ${short(m.answer, 400)}`, '    ', width, { dimColor: true }) : []),
+    dim(el, "    full transcript: ← in Claude Code's agent view"),
   ]
 }
 

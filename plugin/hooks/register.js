@@ -4,7 +4,7 @@
 // the status line, toasts, the spinner and the Agent tool rows.
 
 import { CONDUCTOR, instrumentDef, activity, apply, authorOf, closeLeftOpen, codaMarkdown, elapsed, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, lastCall, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
-import { GLYPH, TABS, band, heldWrite, pane, scrollPane } from './views.js'
+import { TABS, agentRows, band, heldWrite, outcomeLine, pane, scrollPane } from './views.js'
 import { colorMode, ground, modeFor, paint, setColorMode } from './palette.js'
 
 const PANE = 'orchestra'
@@ -442,7 +442,7 @@ function toastNews($, before, applied = []) {
     const how = h.via === 'brief' ? 'was handed' : 'read'
     $.ui.toast(`Orchestra · handoff: ${nameOf(state, h.to)} ${how} ${h.path} v${h.v} from ${nameOf(state, h.from)}`)
   }
-  for (const f of state.toolFailures.slice(before.failures).filter((x) => x.agent !== CONDUCTOR)) {
+  for (const f of state.toolFailures.slice(before.failures).filter((x) => x.agent !== CONDUCTOR && state.musicians[x.agent]?.assigned)) {
     $.ui.toast(`Orchestra · ${nameOf(state, f.agent)}: ${f.tool} failed`, { timeoutMs: 6000 })
   }
 }
@@ -457,17 +457,25 @@ async function writeCoda($, announce = false, at = epoch) {
     && Object.values(state.background).every((b) => b.status !== null)
   const file = codaFile
   const text = codaMarkdown(state, ledgerPath())
-  const line = statusLine(state)
+  const start = state.events.find((x) => x.type === 'part.assigned')
+  const outcome = outcomeLine(state, start ? (state.events.at(-1)?.ts ?? start.ts) - start.ts : 0)
   // The coda is announced only once its file is written.
   codaWrites = codaWrites.then(async () => {
     await $.fs.write(file, text)
     if (settled && announce) {
-      $.ui.log(`Orchestra coda: ${line}. Written to ${relative(file)}`)
+      $.ui.log(outcome)
       $.ui.toast('Orchestra · coda ready: /orchestra and open the Coda tab', { timeoutMs: 6000 })
     }
   }).catch((err) => warn($, 'coda', `could not write the coda to ${relative(file)} (${err instanceof Error ? err.message : String(err)})`))
   await recordIn(at, $, { type: 'coda', path: relative(file), settled })
   view.codaPath = relative(file)
+}
+
+// The line of a failed call's output that says what went wrong. A failed shell call's output starts
+// with "Exit code N", so the line after it is added.
+function firstErrorLine(text) {
+  const [first = '', next] = String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  return short(/^Exit code \d+$/.test(first) && next ? `${first}: ${next}` : first, 160)
 }
 
 // Lines in `now` that are not in `then`, counted as a multiset.
@@ -857,7 +865,7 @@ async function afterTool($, e, key, target, isWrite, mark, before, result, untra
   // without its call.
   await step('record the result', () => recordIn(at, $, [
     before.callRecorded ? null : { type: 'tool.call', agent: key, tool: e.tool, target },
-    { type: 'tool.result', agent: key, tool: e.tool, target, ok, error: ok ? undefined : short(result?.text || result?.deny, 200) },
+    { type: 'tool.result', agent: key, tool: e.tool, target, ok, error: ok ? undefined : short(result?.text || result?.deny, 200), line: ok ? undefined : firstErrorLine(result?.text || result?.deny) },
   ]))
 }
 
@@ -1191,15 +1199,21 @@ export function register(on) {
       await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | close', immediate: true })
       colorterm = (await $.env.get('COLORTERM')) || ''
       term = (await $.env.get('TERM')) || ''
-      const theme = (await $.config.list()).find((row) => row.key === 'theme')?.value
-      setColorMode(modeFor(theme, colorterm, term))
+      await refreshTheme($).catch((err) => {
+        debug($, `Orchestra could not read the theme, so it paints no background: ${err instanceof Error ? err.message : String(err)}`)
+        setColorMode('unknown')
+      })
       let themeFailed = false
       // session.start fires again on /clear, resume and compaction: one recheck timer, not one each.
       themeTimer?.cancel()
       themeTimer = $.clock.every(THEME_RECHECK_MS, () => {
         refreshTheme($).then(() => { themeFailed = false }).catch((err) => {
-          if (!themeFailed) debug($, `Orchestra could not re-read the theme: ${err instanceof Error ? err.message : String(err)}`)
+          if (!themeFailed) debug($, `Orchestra could not re-read the theme, so it paints no background: ${err instanceof Error ? err.message : String(err)}`)
           themeFailed = true
+          if (colorMode() !== 'unknown') {
+            setColorMode('unknown')
+            $.ui.invalidate('ui.render')
+          }
         })
       })
     })
@@ -1408,7 +1422,7 @@ export function register(on) {
     if (!isPerformance(state)) return next(e)
     const el = $.ui.resolve(e)
     const theirs = await next(e)
-    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80))
+    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80), view.now, e.props.maxRows || Infinity)
     return el.Box({ flexDirection: 'column', children: [mine, theirs].filter(Boolean) })
   })
 
@@ -1453,9 +1467,13 @@ export function register(on) {
     const el = $.ui.resolve(e)
     const instrument = m ? m.instrument : instrumentOf(type)
     const def = instrumentDef(instrument)
-    const mark = m ? GLYPH[m.state] : ''
-    const label = m ? `${mark} ${m.name} · ${m.role} · ${plural(m.measures, 'measure')}` : `◌ ${def.name} · ${def.role}`
     const row = await next(e)
-    return el.Box({ flexDirection: 'column', children: [el.Text({ color: paint(instrument), bold: true, children: [label] }), row].filter(Boolean) })
+    if (!m) return el.Box({ flexDirection: 'column', children: [el.Text({ color: paint(instrument), bold: true, children: [`◌ ${def.name} · ${def.role}`] }), row].filter(Boolean) })
+    const lines = agentRows(state, m, view.now)
+    return el.Box({ flexDirection: 'column', children: [
+      el.Text({ color: paint(instrument), bold: true, wrap: 'truncate-end', children: [lines.title] }),
+      el.Text({ color: lines.token ? paint(lines.token) : undefined, wrap: 'truncate-end', children: [`  ${lines.detail}`] }),
+      row,
+    ].filter(Boolean) })
   })
 }

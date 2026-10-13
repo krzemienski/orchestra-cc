@@ -18,17 +18,18 @@ const cases = [
   [['dark-ansi', 'truecolor', 'xterm-256color'], 'ansi'],
   [['light', 'truecolor', ''], 'light'],
   [['light', '', 'xterm-256color'], 'ansi'],
-  [[undefined, '24bit', ''], 'dark'],
+  [[undefined, '24bit', ''], 'unknown'],
+  [['auto', 'truecolor', 'xterm-256color'], 'unknown'],
 ]
 for (const [args, want] of cases) assert.equal(modeFor(...args), want, `modeFor(${JSON.stringify(args)})`)
 
 console.log('token      mode   value    contrast')
-for (const mode of ['dark', 'light', '256', 'ansi']) {
+for (const mode of ['dark', 'light', '256', 'ansi', 'unknown']) {
   setColorMode(mode)
   for (const k of Object.keys(TOKENS)) {
     const v = paint(k)
     let c = '-'
-    if (mode === 'ansi') assert(ANSI.includes(v), `${k} ansi ${v}`)
+    if (mode === 'ansi' || mode === 'unknown') assert(ANSI.includes(v), `${k} ${mode} ${v}`)
     else {
       assert.match(v, /^#[0-9a-f]{6}$/, `${k} ${mode} ${v}`)
       const x = contrast(v, mode === 'light' ? WHITE : BLACK)
@@ -39,12 +40,13 @@ for (const mode of ['dark', 'light', '256', 'ansi']) {
   }
 }
 setColorMode('dark')
-// The pane ground is the background each mode's contrast was measured on; ANSI leaves Claude Code's.
-const GROUNDS = { dark: BLACK, '256': BLACK, light: WHITE, ansi: undefined }
+// The pane ground is the background each mode's contrast was measured on; ANSI and an unknown theme
+// leave Claude Code's.
+const GROUNDS = { dark: BLACK, '256': BLACK, light: WHITE, ansi: undefined, unknown: undefined }
 for (const [m, want] of Object.entries(GROUNDS)) {
   setColorMode(m)
   assert.equal(ground(), want, `ground in ${m} mode`)
-  console.log(`ground ${m.padEnd(5)} ${want ?? '(Claude Code default)'}`)
+  console.log(`ground ${m.padEnd(7)} ${want ?? '(nothing painted)'}`)
 }
 setColorMode('dark')
 console.log('palette proof: OK')

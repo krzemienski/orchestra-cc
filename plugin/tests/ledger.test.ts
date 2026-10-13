@@ -30,7 +30,7 @@ describe('ledger', () => {
   test('a stale-base write becomes a conflict and a product of an old input is stale', async () => {
     const state = fold(events)
     const c = coda(state)
-    expect(statusLine(state)).toBe('Orchestra · 3 playing · 0 done · 2 artifacts changed · 1 stale')
+    expect(statusLine(state)).toBe('Orchestra · 3 playing · 2 artifacts changed · 1 stale')
     expect(c.conflicts.map((x) => x.text)).toEqual([
       'Trumpet 2 tried to write config.json over v1, written by Trumpet (had seen v0). Orchestra sent the write back to re-read, without a decision from you.',
     ])

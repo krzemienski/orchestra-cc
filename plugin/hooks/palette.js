@@ -4,7 +4,9 @@
 // a dark terminal, measured against pure black, and one for a light terminal, measured against white;
 // both stay at least 4.5:1 (MIN_CONTRAST). A 256-colour terminal gets the xterm-256 cube entry nearest
 // the dark value, so what it draws is what was measured; anything less gets an ANSI name, which the
-// terminal maps through its own palette.
+// terminal maps through its own palette. When the theme cannot be read or is neither dark nor light,
+// the mode is `unknown`: nothing is painted and the ANSI names are used, since no background is
+// known to measure against.
 
 export const MIN_CONTRAST = 4.5
 export const BLACK = '#000000'
@@ -64,7 +66,7 @@ export const XTERM = Object.fromEntries(Object.entries(TOKENS).map(([k, t]) => [
 
 let mode = 'dark'
 
-// 'dark', 'light', '256' or 'ansi'.
+// 'dark', 'light', '256', 'ansi' or 'unknown'.
 export function setColorMode(next) {
   mode = next
 }
@@ -75,9 +77,10 @@ export const colorMode = () => mode
 // which differs from the terminal's background beside it and lowers every token's contrast. The
 // pane body is painted the ground its tokens were measured on instead: black for a dark or
 // 256-colour terminal, white for a light one. With ANSI names the terminal maps colours through
-// its own palette and no hex is right, so the engine's fill is left alone.
+// its own palette and no hex is right, and with an unknown theme no background is known, so in both
+// the engine's fill is left alone.
 export function ground() {
-  if (mode === 'ansi') return undefined
+  if (mode === 'ansi' || mode === 'unknown') return undefined
   return mode === 'light' ? WHITE : BLACK
 }
 
@@ -85,7 +88,7 @@ export function paint(token) {
   const key = TOKENS[token] ? token : 'guest'
   if (mode === '256') return XTERM[key]?.send ?? TOKENS[key].dark
   const t = TOKENS[key]
-  return t[mode] || t.dark
+  return mode === 'unknown' ? t.ansi : t[mode] || t.dark
 }
 
 // Claude Code's theme names include "dark", "light", "light-daltonized", "dark-ansi" and so on.
@@ -93,6 +96,7 @@ export function paint(token) {
 export function modeFor(theme, colorterm, term = '') {
   const name = String(theme || '')
   if (name.includes('ansi')) return 'ansi'
+  if (!name.startsWith('dark') && !name.startsWith('light')) return 'unknown'
   if (!/truecolor|24bit/i.test(String(colorterm || ''))) return /256/.test(String(term || '')) && !name.startsWith('light') ? '256' : 'ansi'
   return name.startsWith('light') ? 'light' : 'dark'
 }

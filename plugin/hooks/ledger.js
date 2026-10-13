@@ -487,6 +487,65 @@ export const lastCalls = (state, key, n) => pairCalls(state, key).slice(-n).map(
   ms: result ? result.ts - call.ts : null, ok: result ? Boolean(result.ok) : null, error: result?.error ?? null,
 }))
 
+// A duration as a person reads it: "4s", "1m 05s".
+export function elapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+// What a musician is doing now and for how long: its open call and the time from the call's
+// start to `now`, the time of the newest recorded event. Null when it has no open call.
+export function activity(state, m, now) {
+  const call = m.tool ? currentCall(state, m.key) : null
+  if (!call) return null
+  return `${call.tool}${call.target ? ` ${call.target}` : ''}${now ? ` · ${elapsed(now - call.ts)}` : ''}`
+}
+
+// A musician's newest finished call, with how long it ran.
+export function lastCall(state, key) {
+  const done = pairCalls(state, key).findLast((p) => p.result)
+  const result = done?.result
+  return done && result ? { tool: done.call.tool, target: done.call.target, ms: result.ts - done.call.ts, ok: Boolean(result.ok) } : null
+}
+
+// The newest handoff while it is among the last HANDOFF_WINDOW events.
+const HANDOFF_WINDOW = 12
+export function liveHandoff(state) {
+  const h = state.handoffs[state.handoffs.length - 1]
+  const last = state.events[state.events.length - 1]
+  return h && last && last.seq - h.seq <= HANDOFF_WINDOW ? h : null
+}
+
+// One ledger event in words; null for events that say nothing to a person.
+export function eventText(state, e) {
+  const who = e.agent ? nameOf(state, e.agent) : 'Orchestra'
+  const v = (path, hash) => {
+    const i = state.artifacts[path]?.versions.findIndex((x) => x.hash === hash)
+    return i >= 0 ? ` v${i}` : ''
+  }
+  switch (e.type) {
+    case 'part.assigned': return `Conductor → ${who}: ${e.description || 'a part'}`
+    case 'artifact.read': return `${who} ○ read ${e.path}${v(e.path, e.hash)}`
+    case 'artifact.write': return `${who} ● wrote ${e.path}${v(e.path, e.hash)}${e.via === 'bash' ? ' via Bash' : ''}`
+    case 'tool.call': return e.agent === CONDUCTOR ? null : `${who} · ${e.tool}${e.target ? ` ${e.target}` : ''}`
+    case 'tool.result': {
+      if (!e.ok) return `${who} ✕ ${e.tool} failed`
+      const done = lastCall(state, e.agent)
+      return done ? `${who} · ${e.tool}${e.target ? ` ${e.target}` : ''} · ${elapsed(done.ms)}` : null
+    }
+    case 'conflict.resolved': return `You decided a conflict: ${e.choice}${e.auto ? ' (automatic)' : ''}`
+    case 'part.done': return `${who} ✓ finished the part`
+    case 'part.failed': return `${who} ✕ part ended: ${e.reason}`
+    case 'background.started': return `${who} started a background command`
+    case 'background.ended': return `A background command ended (${e.status})`
+    default: return null
+  }
+}
+
+// The newest events in words, newest first.
+export const recent = (state, n) => state.events.slice(-60).map((e) => ({ seq: e.seq, text: eventText(state, e) }))
+  .filter((x) => x.text).slice(-n).reverse()
+
 export function fold(events) {
   return events.reduce(apply, emptyState())
 }

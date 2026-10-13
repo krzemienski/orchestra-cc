@@ -3,10 +3,9 @@
 // and draws the ensemble on the surfaces a mod owns: a pane, the band above the prompt,
 // the status line, toasts, the spinner and the Agent tool rows.
 
-import { CONDUCTOR, instrumentDef, apply, authorOf, closeLeftOpen, codaMarkdown, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
+import { CONDUCTOR, instrumentDef, activity, apply, authorOf, closeLeftOpen, codaMarkdown, elapsed, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, lastCall, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { GLYPH, TABS, band, heldWrite, pane, scrollPane } from './views.js'
 import { colorMode, ground, modeFor, paint, setColorMode } from './palette.js'
-import { FRAME_MS, activity, elapsed, lastCall, note } from './motion.js'
 
 const PANE = 'orchestra'
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -171,34 +170,12 @@ const textKey = (agent, path) => `${agent}\u0000${path}`
  *     changed: string[]|null, currentText: string|null, proposed: string }|null,
  *   narration: { status: 'writing'|'done'|'failed', path: string, text: string }|null,
  *   voice?: { status: 'speaking'|'done'|'failed', path: string, detail: string }|null,
- *   offset?: number, frame: number, live: boolean, now: number, setTab: (tab: string) => void, select: (type: string, id: string) => void }} View
+ *   offset?: number, now: number, setTab: (tab: string) => void, select: (type: string, id: string) => void }} View
  */
+// `now` is the time of the newest recorded event, so every elapsed time shown is measured at the
+// last event and nothing Orchestra draws changes until the next one arrives.
 /** @type {View} */
-const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, narration: null, frame: 0, live: false, now: 0, setTab: () => {}, select: () => {} }
-
-// The frame timer behind motion.js: it runs only in an interactive session and only while a
-// musician is playing or waiting, and stops itself when nobody is, so an idle session never redraws.
-let interactive = false
-/** @type {{ cancel: () => void } | null} */
-let motionTimer = null
-const moving = () => interactive && musicians(state).some((m) => m.state === 'playing' || m.state === 'waiting')
-function syncMotion($) {
-  if (moving() === Boolean(motionTimer)) return
-  if (motionTimer) {
-    motionTimer.cancel()
-    motionTimer = null
-    view.live = false
-    return
-  }
-  view.live = true
-  motionTimer = $.clock.every(FRAME_MS, () => {
-    if (!moving()) return syncMotion($)
-    view.frame += 1
-    // The clock moves the durations shown beside each open tool call; a failed read keeps the last.
-    $.clock.now().then((t) => { view.now = t }, () => {})
-    $.ui.invalidate('ui.render')
-  })
-}
+const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, narration: null, now: 0, setTab: () => {}, select: () => {} }
 
 const segmentOf = (n) => Math.ceil(n / SEGMENT_EVENTS)
 const segmentFile = (n) => `${ledgerBase}.${String(n).padStart(4, '0')}.jsonl`
@@ -449,7 +426,6 @@ async function recordIn(at, $, fields, quiet = false) {
     // Not awaited: waiting on the save chain would spend this hook's time budget.
     persist($).catch((err) => debug($, `Orchestra could not queue a save: ${err instanceof Error ? err.message : String(err)}`))
     $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
-    syncMotion($)
     $.ui.invalidate('ui.render')
   } catch (err) {
     debug($, `Orchestra could not show event ${event.seq}: ${err instanceof Error ? err.message : String(err)}`)
@@ -1337,7 +1313,6 @@ export function register(on, options) {
     model: String(options?.voiceModel || ''),
   }
   on('session.start', async ($, e, next) => {
-    interactive = e.isInteractive === true
     await safely($, 'set up its command and theme', async () => {
       await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | voice | close', immediate: true })
       colorterm = (await $.env.get('COLORTERM')) || ''
@@ -1566,7 +1541,7 @@ export function register(on, options) {
     if (!isPerformance(state)) return next(e)
     const el = $.ui.resolve(e)
     const theirs = await next(e)
-    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80), view)
+    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80))
     return el.Box({ flexDirection: 'column', children: [mine, theirs].filter(Boolean) })
   })
 
@@ -1611,7 +1586,7 @@ export function register(on, options) {
     const el = $.ui.resolve(e)
     const instrument = m ? m.instrument : instrumentOf(type)
     const def = instrumentDef(instrument)
-    const mark = m && view.live && m.state === 'playing' ? note(view.frame, musicians(state).indexOf(m)) : m ? GLYPH[m.state] : ''
+    const mark = m ? GLYPH[m.state] : ''
     const label = m ? `${mark} ${m.name} · ${m.role} · ${plural(m.measures, 'measure')}` : `◌ ${def.name} · ${def.role}`
     const row = await next(e)
     return el.Box({ flexDirection: 'column', children: [el.Text({ color: paint(instrument), bold: true, children: [label] }), row].filter(Boolean) })

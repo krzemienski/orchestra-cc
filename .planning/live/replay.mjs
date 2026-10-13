@@ -18,10 +18,10 @@ for (const e of events.filter((x) => ['part.assigned', 'tool.call', 'tool.result
 }
 console.log(`musicians: ${musicians(state).map((m) => `${m.name}=${m.state} (${m.measures} measures)`).join(', ')}`)
 
-// The band the mod would draw now, still, with live motion off.
+// The band the mod would draw now.
 const el = new Proxy({}, { get: (_, tag) => (props = {}) => ({ tag, ...props }) })
 const text = (n) => (n == null || n === false ? '' : typeof n === 'string' ? n : [].concat(n.children ?? []).map(text).join(''))
-console.log(`band (still): ${text(band(el, state, 140, { frame: 0, live: false }))}`)
+console.log(`band (still): ${text(band(el, state, 140))}`)
 
 if (framesDir) {
   const names = (await readdir(framesDir)).filter((f) => f.endsWith('.txt')).sort()

@@ -83,7 +83,7 @@ export function doing(state, m, now) {
     const by = c ? authorOf(state, state.artifacts[c.path]?.versions[c.current]) : ''
     return { ...base, word: 'held', text: c ? `${c.path}: ${by} wrote v${c.current} ${c.base === null ? 'and you never read it' : `since you read v${c.base}`}` : 'waiting on you', time: '' }
   }
-  const call = m.tool ? currentCall(state, m.key) : null
+  const call = m.finished ? null : currentCall(state, m.key)
   if (call) {
     const seen = m.seen[call.target]
     const from = WRITE_TOOLS.has(call.tool) && seen !== undefined ? ` from v${seen}` : ''

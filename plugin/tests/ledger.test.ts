@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { CommandRunInput } from 'claude-code'
-import { coda, currentCall, fold, instanceName, lastCalls, musicians, rollup, statusLine } from '../hooks/ledger.js'
+import { activity, coda, currentCall, fold, instanceName, lastCalls, musicians, rollup, statusLine } from '../hooks/ledger.js'
 
 // Two trumpets read config.json at v0; the first writes v1, the second then tries to write from v0
 // and is sent back with nobody to ask; a cello writes notes.md from v0 after v1 landed.
@@ -105,5 +105,15 @@ describe('ledger', () => {
     ])
     expect(lastCalls(state, A, 2).map((c) => [c.tool, c.ms])).toEqual([['Grep', 3000], ['Read', 200]])
     expect(currentCall(state, A)).toBe(null)
+  })
+
+  test('a musician running two calls at once is still in the other one after the first ends', async () => {
+    const state = fold([
+      { seq: 1, ts: 1000, type: 'part.assigned', agent: A, subagentType: 'orchestra:timpani' },
+      { seq: 2, ts: 2000, type: 'tool.call', agent: A, tool: 'Bash', target: 'sleep 25' },
+      { seq: 3, ts: 2100, type: 'tool.call', agent: A, tool: 'Bash', target: 'ls config/missing.json' },
+      { seq: 4, ts: 3000, type: 'tool.result', agent: A, tool: 'Bash', target: 'ls config/missing.json', ok: false, error: 'Exit code 1' },
+    ])
+    expect(activity(state, state.musicians[A], 9000)).toBe('Bash sleep 25 · 7s')
   })
 })

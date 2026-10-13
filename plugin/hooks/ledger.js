@@ -8,7 +8,7 @@
  * @typedef {{ path: string, versions: Version[], reads: { agent: string, v: number, seq: number }[] }} Artifact
  * @typedef {{ key: string, instrument: string, name: string, n: number, type: string, role: string, color: string, state: string, finished?: boolean,
  *   assigned: boolean, part: string|null, prompt?: string, parent?: string, measures: number,
- *   tool: { tool: string, target: string }|null, answer: string|null, failure?: string,
+ *   answer: string|null, failure?: string,
  *   seen: Record<string, number>, readSeq: Record<string, number>, reads: number, writes: number, added: number, removed: number }} Musician
  * @typedef {{ id: string, path: string, agent: string, tool?: string, against: string, base: number|null, current: number, seq: number,
  *   resolved: boolean, choice: string|null, auto?: boolean, resolvedSeq?: number, shown?: number,
@@ -82,7 +82,7 @@ function newMusician(key, instrument, name, type) {
     role: instrumentDef(instrument).role, color: instrument,
     state: key === CONDUCTOR ? 'resting' : 'playing',
     assigned: key === CONDUCTOR,
-    part: null, measures: 0, tool: null, answer: null,
+    part: null, measures: 0, answer: null,
     seen: Object.create(null), readSeq: Object.create(null),
     reads: 0, writes: 0, added: 0, removed: 0,
   }
@@ -240,13 +240,11 @@ const handlers = {
   },
   'tool.call'(state, e) {
     const m = ensureMusician(state, e.agent)
-    m.tool = { tool: e.tool, target: e.target }
     // A finished musician woken only to read its background command's notification stays finished.
     if (m.state !== 'waiting' && !m.finished) m.state = 'playing'
   },
   'tool.result'(state, e) {
     const m = ensureMusician(state, e.agent)
-    m.tool = null
     m.measures += 1
     if (!e.ok && e.sentBack) {
       if (String(e.error).includes('file busy')) state.busySendBacks.push({ agent: e.agent, target: e.target, seq: e.seq })
@@ -397,14 +395,12 @@ const handlers = {
     const m = ensureMusician(state, e.agent)
     m.finished = true
     m.state = 'done'
-    m.tool = null
     m.answer = e.answer
   },
   'part.failed'(state, e) {
     const m = ensureMusician(state, e.agent)
     m.finished = true
     m.state = 'failed'
-    m.tool = null
     m.answer = e.answer
     m.failure = e.reason
   },
@@ -494,9 +490,10 @@ export function elapsed(ms) {
 }
 
 // What a musician is doing now and for how long: its open call and the time from the call's
-// start to `now`, the time of the newest recorded event. Null when it has no open call.
+// start to `now`, the time of the newest recorded event. Null when it has no open call, or its part
+// has ended (a call cut off at the end leaves no result).
 export function activity(state, m, now) {
-  const call = m.tool ? currentCall(state, m.key) : null
+  const call = m.finished ? null : currentCall(state, m.key)
   if (!call) return null
   return `${call.tool}${call.target ? ` ${call.target}` : ''}${now ? ` · ${elapsed(now - call.ts)}` : ''}`
 }

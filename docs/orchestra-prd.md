@@ -1,5 +1,7 @@
 # Orchestra — Product Requirements Document
 
+> **Superseded by `docs/PRD-orchestra.md` (PRD v2, 2026-10-12).** This document is kept as the approved build spec. PRD v2 cites it by line against commit 6d289ac (`git show 6d289ac:docs/orchestra-prd.md`). The lines on motion (:496) and the painted pane ground (:497, :676) are reversed by P0-19 and P0-20.
+
 Version 1.0, 2026-10-05. Target: Claude Code 2.1.289 (mods require 2.1.287 or later [A1]).
 Companion documents: `docs/orchestra-research-report.md` (Stage 1 research), `docs/orchestra-prototype-design.md` (approved Stage 2 prototype), `docs/orchestra-spec.md` (engineering spec: event flow, defects, verification plan).
 Status markers used in this document: **[VERIFIED: path]** means seen in a real run with that evidence file; **[UNVERIFIED]** means specified but not yet exercised in a real run.

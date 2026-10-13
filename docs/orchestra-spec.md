@@ -1,5 +1,7 @@
 # Orchestra — Stage 3 specification
 
+> Engineering spec as of 0.1.1 (2026-10-05). The §6 surfaces (band, status, Ensemble, Agent row, :124-138) are replaced by PRD v2 P0-13 to P0-18 (`docs/PRD-orchestra.md`) and will be rewritten in the 0.2.0 docs slice. `prototype/` is frozen and is not a publish item.
+
 Status: draft for the user's review, 2026-10-05. Reasoning trail: 24 steps through the sequential-thinking MCP server, kept in the author's local working notes (not published).
 Inputs: the original three-stage prompt; `docs/orchestra-research-report.md` (Stage 1); `prototype/` and `docs/orchestra-prototype-design.md` (Stage 2, approved "approved, publish public as orchestra-cc"); the Claude Code 2.1.289 mods docs and the type declarations that Claude Code generates for a mod (local copies, not published).
 

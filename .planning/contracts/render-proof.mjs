@@ -57,6 +57,8 @@ assert.ok(ens.band.startsWith('𝄐 Orchestra  2 playing'), `band line 1 is the 
 // 2. Rows past the band's room fold into one row that points at the pane.
 const folded = rows(band(el, at(t0 + 6100), 80, t0 + 4100, 2))
 assert.deepEqual(folded.map((l) => l.trim()), ['𝄐 Orchestra  2 playing', '… 2 more · /orchestra'], `band folds: ${JSON.stringify(folded)}`)
+const oneRow = rows(band(el, at(t0 + 6100), 80, t0 + 4100, 1))
+assert.deepEqual(oneRow.map((l) => l.trim()), ['𝄐 Orchestra  2 playing · … 2 more · /orchestra'], `one row: the fold joins the rollup: ${JSON.stringify(oneRow)}`)
 
 // 3. Nothing moves without an event: the same ledger drawn again after the clock has moved on a
 // minute gives the same band, Ensemble and Score, character for character.

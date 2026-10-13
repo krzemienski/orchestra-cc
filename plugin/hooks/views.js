@@ -129,11 +129,15 @@ function row(el, key, width, nameCols, m, d) {
 // Rows past `maxRows` fold into one `… N more · /orchestra` row, so the band never scrolls.
 export function band(el, state, width, now, maxRows = Infinity) {
   const live = musicians(state).filter((m) => standing(state, m) !== 'done')
-  const room = Math.max(1, maxRows - 1)
+  const title = [tone(el, 'conductor', '𝄐 Orchestra', true), '  ', ...rollupText(el, state)]
+  // With one row (a small terminal while Claude Code lists its agents) the fold joins line 1, so the
+  // rollup is still what shows.
+  if (maxRows < 2) return el.Box({ flexDirection: 'column', width, children: [line(el, [...title, live.length ? dim(el, ` · … ${live.length} more · /orchestra`) : ''])] })
+  const room = maxRows - 1
   const shown = live.length > room ? live.slice(0, Math.max(0, room - 1)) : live
   const nameCols = Math.max(0, ...shown.map((m) => m.name.length))
   return el.Box({ flexDirection: 'column', width, children: [
-    line(el, [tone(el, 'conductor', '𝄐 Orchestra', true), '  ', ...rollupText(el, state)]),
+    line(el, title),
     ...shown.map((m) => row(el, `band-${m.key}`, width, nameCols, m, doing(state, m, now))),
     ...(shown.length < live.length ? [dim(el, `  … ${live.length - shown.length} more · /orchestra`)] : []),
   ] })

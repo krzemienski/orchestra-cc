@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { CommandRunInput } from 'claude-code'
-import { coda, fold, statusLine } from '../hooks/ledger.js'
+import { coda, currentCall, fold, instanceName, lastCalls, musicians, rollup, statusLine } from '../hooks/ledger.js'
 
 // Two trumpets read config.json at v0; the first writes v1, the second then tries to write from v0
 // and is sent back with nobody to ask; a cello writes notes.md from v0 after v1 landed.
@@ -43,5 +43,67 @@ describe('ledger', () => {
 
   test('/orchestra ledger answers before any part is assigned', async ($) => {
     expect((await $.command.run(ledgerCommand)).text).toBe('No performance in this session yet: no musician has been assigned a part.')
+  })
+
+  // Ten musicians at once across four instruments, assigned in this order.
+  const ten = ['trumpet', 'violin', 'trumpet', 'flute', 'violin', 'trumpet', 'timpani', 'flute', 'trumpet', 'violin']
+  const tenEvents = ten.map((role, i) => ({ seq: i + 1, ts: 1000 + i, type: 'part.assigned', agent: `a${i}`, subagentType: `orchestra:${role}`, description: `part ${i}` }))
+
+  test('ten musicians at once get ten distinct names, numbered per instrument in order of assignment', async () => {
+    const state = fold(tenEvents)
+    const names = musicians(state).map((m) => instanceName(state, m.key))
+    expect(names).toEqual(['Trumpet', 'Violin', 'Trumpet 2', 'Flute', 'Violin 2', 'Trumpet 3', 'Timpani', 'Flute 2', 'Trumpet 4', 'Violin 3'])
+    expect(new Set(names).size).toBe(10)
+    expect(musicians(state).map((m) => m.name)).toEqual(names)
+  })
+
+  test('replaying the same ledger gives the same names', async () => {
+    const once = fold(tenEvents)
+    const twice = fold(tenEvents)
+    expect(ten.map((_, i) => instanceName(twice, `a${i}`))).toEqual(ten.map((_, i) => instanceName(once, `a${i}`)))
+  })
+
+  test('a loop seen through a tool call before its spawn keeps names already shown', async () => {
+    const state = fold([
+      { seq: 1, ts: 1, type: 'tool.call', agent: 'early', tool: 'Read', target: 'a.txt' },
+      { seq: 2, ts: 2, type: 'part.assigned', agent: 'late', subagentType: 'orchestra:trumpet' },
+      { seq: 3, ts: 3, type: 'part.assigned', agent: 'early', subagentType: 'orchestra:trumpet' },
+    ])
+    expect([instanceName(state, 'late'), instanceName(state, 'early')]).toEqual(['Trumpet', 'Trumpet 2'])
+  })
+
+  test('the current call is the newest one without a result, and finished calls carry their time', async () => {
+    const state = fold([
+      { seq: 1, ts: 1000, type: 'part.assigned', agent: A, subagentType: 'orchestra:trumpet' },
+      { seq: 2, ts: 2000, type: 'tool.call', agent: A, tool: 'Read', target: 'x.js' },
+      { seq: 3, ts: 2500, type: 'tool.result', agent: A, tool: 'Read', target: 'x.js', ok: true },
+      { seq: 4, ts: 3000, type: 'tool.call', agent: A, tool: 'Bash', target: 'npm test' },
+      { seq: 5, ts: 3100, type: 'tool.call', agent: B, tool: 'Read', target: 'y.js' },
+      { seq: 6, ts: 9000, type: 'tool.result', agent: A, tool: 'Bash', target: 'npm test', ok: false, error: 'exit 1' },
+      { seq: 7, ts: 9500, type: 'tool.call', agent: A, tool: 'Edit', target: 'x.js' },
+    ])
+    expect(currentCall(state, A)).toMatchObject({ tool: 'Edit', target: 'x.js', ts: 9500 })
+    expect(currentCall(state, B)).toMatchObject({ tool: 'Read', target: 'y.js' })
+    expect(lastCalls(state, A, 3)).toEqual([
+      { tool: 'Read', target: 'x.js', ts: 2000, seq: 2, ms: 500, ok: true, error: null },
+      { tool: 'Bash', target: 'npm test', ts: 3000, seq: 4, ms: 6000, ok: false, error: 'exit 1' },
+      { tool: 'Edit', target: 'x.js', ts: 9500, seq: 7, ms: null, ok: null, error: null },
+    ])
+  })
+
+  test('the rollup leaves zero counts out and lists open conflicts and stale reads after the states', async () => {
+    expect(rollup(fold(events)).map((x) => x.text)).toEqual(['3 playing', '⚠ 1 stale'])
+  })
+
+  test('two calls running at once each get their own result, whatever order the results come in', async () => {
+    const state = fold([
+      { seq: 1, ts: 1000, type: 'part.assigned', agent: A, subagentType: 'orchestra:violin' },
+      { seq: 2, ts: 2000, type: 'tool.call', agent: A, tool: 'Grep', target: 'limit' },
+      { seq: 3, ts: 2100, type: 'tool.call', agent: A, tool: 'Read', target: 'x.js' },
+      { seq: 4, ts: 2300, type: 'tool.result', agent: A, tool: 'Read', target: 'x.js', ok: true },
+      { seq: 5, ts: 5000, type: 'tool.result', agent: A, tool: 'Grep', target: 'limit', ok: true },
+    ])
+    expect(lastCalls(state, A, 2).map((c) => [c.tool, c.ms])).toEqual([['Grep', 3000], ['Read', 200]])
+    expect(currentCall(state, A)).toBe(null)
   })
 })

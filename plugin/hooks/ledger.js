@@ -6,7 +6,7 @@
 /**
  * @typedef {{ v: number, hash: string, agent: string, base: number|null, added: number, removed: number, seq: number, via?: string, uncertain?: boolean, unchecked?: boolean, observed?: boolean, candidates?: string[] }} Version
  * @typedef {{ path: string, versions: Version[], reads: { agent: string, v: number, seq: number }[] }} Artifact
- * @typedef {{ key: string, instrument: string, name: string, type: string, role: string, color: string, state: string, finished?: boolean,
+ * @typedef {{ key: string, instrument: string, name: string, n: number, type: string, role: string, color: string, state: string, finished?: boolean,
  *   assigned: boolean, part: string|null, prompt?: string, parent?: string, measures: number,
  *   tool: { tool: string, target: string }|null, answer: string|null, failure?: string,
  *   seen: Record<string, number>, readSeq: Record<string, number>, reads: number, writes: number, added: number, removed: number }} Musician
@@ -78,7 +78,7 @@ export function emptyState() {
 /** @returns {Musician} */
 function newMusician(key, instrument, name, type) {
   return {
-    key, instrument, name, type,
+    key, instrument, name, type, n: 1,
     role: instrumentDef(instrument).role, color: instrument,
     state: key === CONDUCTOR ? 'resting' : 'playing',
     assigned: key === CONDUCTOR,
@@ -93,17 +93,27 @@ export function instrumentOf(type) {
   return INSTRUMENTS[name] && name !== 'conductor' && name !== 'guest' ? name : 'guest'
 }
 
-function displayName(state, key, instrument, type) {
-  const same = state.order.filter((k) => k !== key && state.musicians[k].instrument === instrument).length
-  const base = instrument === 'guest' ? `${GUEST.name} (${type})` : instrumentDef(instrument).name
-  return same ? `${base} ${same + 1}` : base
+// A musician's name on every surface: its instrument, numbered from the second instance on
+// (`Trumpet`, `Trumpet 2`). The number is given once, when the musician's instrument becomes
+// known, as one more than the highest of that instrument so far, so a name never changes or
+// repeats within a session and replaying the ledger gives the same names.
+export function instanceName(state, key) {
+  const m = state.musicians[key]
+  if (!m) return key
+  const base = m.instrument === 'guest' ? `${GUEST.name} (${m.type})` : instrumentDef(m.instrument).name
+  return m.n > 1 ? `${base} ${m.n}` : base
+}
+
+function number(state, m) {
+  m.n = 1 + Math.max(0, ...state.order.filter((k) => k !== m.key && state.musicians[k].instrument === m.instrument).map((k) => state.musicians[k].n))
+  m.name = instanceName(state, m.key)
 }
 
 function ensureMusician(state, key, type = 'unknown') {
   if (state.musicians[key]) return state.musicians[key]
-  const instrument = instrumentOf(type)
-  const m = newMusician(key, instrument, displayName(state, key, instrument, type), type)
+  const m = newMusician(key, instrumentOf(type), '', type)
   state.musicians[key] = m
+  number(state, m)
   state.order.push(key)
   return m
 }
@@ -112,7 +122,8 @@ function ensureMusician(state, key, type = 'unknown') {
 function identify(state, m, type) {
   if (!type || m.type === type) return
   const instrument = instrumentOf(type)
-  Object.assign(m, { type, instrument, role: instrumentDef(instrument).role, color: instrument, name: displayName(state, m.key, instrument, type) })
+  Object.assign(m, { type, instrument, role: instrumentDef(instrument).role, color: instrument })
+  number(state, m)
 }
 
 function ensureArtifact(state, path) {
@@ -434,24 +445,47 @@ export function apply(state, e) {
 // conductor's turn ends. Background commands still running are closed by the caller.
 export function closeLeftOpen(state) {
   const open = state.conflicts.filter((c) => !c.resolved).map((c) => ({ type: 'conflict.resolved', id: c.id, choice: 'reread', auto: true }))
-  // Calls that never got a result, oldest first, per agent and tool.
-  const pending = new Map()
-  for (const e of state.events) {
-    if (e.type !== 'tool.call' && e.type !== 'tool.result') continue
-    const k = `${e.agent}\u0000${e.tool}\u0000${e.target}`
-    const list = pending.get(k) || []
-    if (e.type === 'tool.call') list.push(e)
-    else list.shift()
-    pending.set(k, list)
-  }
-  const calls = [...pending.values()].flat().sort((x, y) => x.seq - y.seq)
-    .map((c) => ({ type: 'tool.result', agent: c.agent, tool: c.tool, target: c.target, ok: false, error: 'session ended' }))
+  const calls = pairCalls(state).filter((c) => !c.result)
+    .map(({ call: c }) => ({ type: 'tool.result', agent: c.agent, tool: c.tool, target: c.target, ok: false, error: 'session ended' }))
   const parts = musicians(state).filter((m) => !m.finished && (m.state === 'playing' || m.state === 'waiting'))
     .map((m) => ({ type: 'part.failed', agent: m.key, reason: 'session ended', answer: null }))
   const conductorState = state.musicians[CONDUCTOR]?.state
   const conductor = conductorState === 'playing' || conductorState === 'waiting' ? [{ type: 'turn.end' }] : []
   return [...open, ...calls, ...parts, ...conductor]
 }
+
+// Every tool call paired with its result, in call order. A result closes the oldest open call of
+// the same agent, tool and target; a call still running has no result. `agent` limits it to one loop.
+/** @returns {{ call: LedgerEvent, result: LedgerEvent|null }[]} */
+function pairCalls(state, agent = null) {
+  const pairs = []
+  const open = new Map()
+  for (const e of state.events) {
+    if ((e.type !== 'tool.call' && e.type !== 'tool.result') || (agent !== null && e.agent !== agent)) continue
+    const k = `${e.agent}\u0000${e.tool}\u0000${e.target}`
+    const list = open.get(k) || []
+    if (e.type === 'tool.call') {
+      const pair = { call: e, result: null }
+      pairs.push(pair)
+      list.push(pair)
+    } else {
+      const pair = list.shift()
+      if (pair) pair.result = e
+    }
+    open.set(k, list)
+  }
+  return pairs
+}
+
+// The call a musician is in now: its newest call without a result, or null.
+export const currentCall = (state, key) => pairCalls(state, key).filter((p) => !p.result).at(-1)?.call ?? null
+
+// A musician's last `n` calls, oldest first, each with how long it ran and how it ended; a call
+// still running has `ms` and `ok` null.
+export const lastCalls = (state, key, n) => pairCalls(state, key).slice(-n).map(({ call, result }) => ({
+  tool: call.tool, target: call.target, ts: call.ts, seq: call.seq,
+  ms: result ? result.ts - call.ts : null, ok: result ? Boolean(result.ok) : null, error: result?.error ?? null,
+}))
 
 export function fold(events) {
   return events.reduce(apply, emptyState())
@@ -487,6 +521,20 @@ export function counts(state) {
     openConflicts: state.conflicts.filter((c) => !c.resolved).length,
     openStale: state.stale.filter((s) => !s.cleared).length,
   }
+}
+
+// The counts a person needs at a glance, zero counts left out: playing, waiting on you, done,
+// failed, then the conflicts and stale reads still open. Each part has its palette token.
+export function rollup(state) {
+  const c = counts(state)
+  return [
+    c.playing ? { text: `${c.playing} playing`, token: 'ok' } : null,
+    c.waiting ? { text: `${c.waiting} waiting on you`, token: 'warn' } : null,
+    c.done ? { text: `${c.done} done`, token: null } : null,
+    c.failed ? { text: `${c.failed} failed`, token: 'danger' } : null,
+    c.openConflicts ? { text: `‼ ${plural(c.openConflicts, 'conflict')}`, token: 'danger', bold: true } : null,
+    c.openStale ? { text: `⚠ ${c.openStale} stale`, token: 'warn' } : null,
+  ].filter((x) => x !== null)
 }
 
 export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`

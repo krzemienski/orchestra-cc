@@ -2,7 +2,7 @@
 
 **Owner**: krzemienski
 **Status**: In Review
-**Last Updated**: 2026-10-12. Rewritten from the original spec and the TUI research of the same day. It replaces the 0.1.1 product PRD and the first draft of 2026-10-12.
+**Last Updated**: 2026-10-13 (P0-20 and D3 reworded for the unknown-theme pane ground). Previously 2026-10-12. Rewritten from the original spec and the TUI research of the same day. It replaces the 0.1.1 product PRD and the first draft of 2026-10-12.
 
 **Sources of truth, in order.**
 1. **The owner's statements.** On 2026-10-12 the owner said:
@@ -280,7 +280,7 @@ Status: **Shipped** = verified in a real run and recorded in `docs/verification.
 | P0-17 | **Pane key hints.** The pane's last row lists the keys of the focused tab. | Capture of each tab | Open |
 | P0-18 | **Outcome line.** When the conductor's turn ends, one transcript line: `𝄐 Coda · N musicians · N files · N conflicts · N failed · <time> · /orchestra coda` | Its counts equal the coda file's (G4) | Change (0.1.1 logs a status sentence, spec S8) |
 | P0-19 | **No motion.** Nothing in Orchestra animates. No frame timer; rows redraw on events. | Code has no timer driving redraws; a 60 s capture with no events shows identical frames apart from Claude Code's spinner | Open: violated today (`plugin/hooks/motion.js`, 250 ms timer) |
-| P0-20 | **Theme-following colours.** Every token reaches at least 4.5:1 contrast on the terminal's own background, in dark, light, 256-colour and ANSI modes. The docked pane fill follows the detected dark/light theme, and nothing is painted when the theme is unknown. | Contrast proof per mode; capture in each mode | Partly shipped: the dark/light switch is verified (`docs/verification.md:41`); truecolor and 256-colour were not observed (`:252`). Revised from spec:496 at the owner's request. |
+| P0-20 | **Theme-following colours.** Every token reaches at least 4.5:1 contrast on the terminal's own background, in dark, light, 256-colour and ANSI modes. The docked pane fill follows the detected dark/light theme. When the theme is unknown (`auto`, a custom theme, a failed read), Orchestra paints a docked pane with the theme's own `inverseText` colour, which the theme resolves to black or white, because Claude Code's grey fill cannot be cleared by a mod (anthropics/claude-code#100102); an inline pane, which has no fill, is not painted. | Contrast proof per mode; capture in each mode | Partly shipped: the dark/light switch is verified (`docs/verification.md:41`); truecolor and 256-colour were not observed (`:252`). Revised from spec:496 at the owner's request. |
 | P0-21 | **No sound, speech, network, key, child process or browser** anywhere in the plugin or its docs | `plugin/.claude-plugin/plugin.json` has no voice or narration options; `/orchestra` has no `voice` argument; `plugin/narrate/` is gone; README and guide say none of these exist | Open: violated today. `userConfig` has `narrateCoda`, `voiceCoda`, `voiceId`, `voiceLanguage`, `voiceModel`; `/orchestra voice` exists (`register.js:1525`). |
 
 ### Should Have (P1)
@@ -371,7 +371,7 @@ Built after the approved spec; dispositions decided below.
   - Of the TUIs studied, Claude Code shows liveness with one spinner, while OpenCode runs two moving indicators.
   - Amp (`amp.terminal.animation`, `NO_ANIMATION=1`) and OpenCode (`animations_enabled`) let users turn animation off. lazygit lets users turn off one decorative effect (`animateExplosion`).
   - Orchestra relies on Claude Code's spinner. Its rows redraw only when events arrive.
-- [x] **D3, 2026-10-12. The pane fill follows the terminal theme.** It is painted only when the theme is known, and contrast is checked against that same background.
+- [x] **D3, 2026-10-12. The pane fill follows the terminal theme.** It is painted with a known background when the theme is known; when it is unknown, a docked pane is painted the theme's own `inverseText` (black or white as the theme resolves it) and an inline pane is not painted. Contrast is checked against that same background. Revised 2026-10-13 by the owner after the 0.2.0 build showed the engine's grey fill cannot be cleared.
 - [x] **D4, 2026-10-12. The next release is 0.2.0.** Removing the voice and narration options and `/orchestra voice` breaks existing configurations.
 - [x] **D5, 2026-10-12. Interaction design.** It follows the patterns in §User Experience, taken from omp (live), OpenCode (live rows, source for the rest) and Claude Code (live), within what a mod can draw (`docs/tui-research.md` §Decisions).
 

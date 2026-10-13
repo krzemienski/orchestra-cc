@@ -170,7 +170,11 @@ export function pane(el, state, view, width, bodyRows) {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
   const body = render(el, state, view, width)
   // The body sits on the ground its colours were measured on, not on Claude Code's grey pane fill.
-  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...paneWindow(el, view, body, bodyRows), keyHints(el, view.tab)] })
+  const rows = paneWindow(el, view, body, bodyRows)
+  // While the tab scrolls, the tree's last row is the hidden one (see paneWindow), so the key hints
+  // go just above it and stay the last row shown.
+  const hidden = view.maxOffset ? [blank(el)] : []
+  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...rows, keyHints(el, view.tab), ...hidden] })
 }
 
 const tabBar = (el, view) => el.Box({
@@ -183,8 +187,9 @@ const tabBar = (el, view) => el.Box({
 
 // The pane draws its own window under the tab bar, so the tabs never scroll away; every
 // row of a tab is one element, so a slice of them is exactly the rows shown. The tree is
-// one row taller than the window: the engine raises `ui.scroll` for the arrows only while
-// it has a row to scroll, and the pane's hook keeps it from moving, so that row never shows.
+// one row taller than the window (pane() adds that row last): the engine raises `ui.scroll`
+// for the arrows only while it has a row to scroll, and the pane's hook keeps it from moving,
+// so that row never shows.
 // Without `bodyRows` the whole tab is drawn and the engine scrolls it.
 function paneWindow(el, view, rows, bodyRows) {
   let end = rows.length
@@ -198,7 +203,7 @@ function paneWindow(el, view, rows, bodyRows) {
   if (!view.maxOffset) return body
   const below = body.length - view.offset - shown
   const where = [view.offset ? `↑ ${view.offset} more above` : null, below ? `↓ ${below} more below` : 'end'].filter(Boolean)
-  return [...body.slice(view.offset, view.offset + shown), dim(el, `${where.join(' · ')} (↑↓ to scroll)`), blank(el)]
+  return [...body.slice(view.offset, view.offset + shown), dim(el, `${where.join(' · ')} (↑↓ to scroll)`)]
 }
 
 // Moves the pane's window for a `ui.scroll` hook on the pane. The engine sizes Home and End

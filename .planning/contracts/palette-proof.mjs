@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { ground, paint, setColorMode, modeFor, contrast, rendererIndex, TOKENS, XTERM, MIN_CONTRAST, BLACK, WHITE } from '../../plugin/hooks/palette.js'
 
-const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
+// Claude Code theme keys: under an ANSI theme the engine draws each as a 16-colour code.
+const ANSI = ['planMode', 'suggestion', 'warning', 'success', 'claude', 'merged', 'inactive', 'error']
 
 for (const [k, t] of Object.entries(TOKENS)) {
   assert(contrast(t.dark, BLACK) >= MIN_CONTRAST, `${k} dark contrast`)

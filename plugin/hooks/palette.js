@@ -3,26 +3,27 @@
 // background the tokens were measured on, over Claude Code's grey pane fill. Each token has a value for
 // a dark terminal, measured against pure black, and one for a light terminal, measured against white;
 // both stay at least 4.5:1 (MIN_CONTRAST). A 256-colour terminal gets the xterm-256 cube entry nearest
-// the dark value, so what it draws is what was measured; anything less gets an ANSI name, which the
-// terminal maps through its own palette. When the theme cannot be read or is neither dark nor light,
-// the mode is `unknown`: nothing is painted and the ANSI names are used, since no background is
-// known to measure against.
+// the dark value, so what it draws is what was measured. Anything less, an ANSI theme, or a theme
+// Orchestra cannot read or name gets a Claude Code theme key (`ansi` below): the engine draws each
+// key in the person's own theme, which under an ANSI theme is a 16-colour code the terminal maps
+// through its palette (a colour name would be drawn as 24-bit). With an unknown theme no background
+// is known to measure against, so nothing is painted.
 
 export const MIN_CONTRAST = 4.5
 export const BLACK = '#000000'
 export const WHITE = '#ffffff'
 
 export const TOKENS = {
-  conductor: { dark: '#c3a6ff', light: '#6b3fd4', ansi: 'cyan' },
-  violin: { dark: '#7eaaff', light: '#2457d6', ansi: 'blue' },
-  trumpet: { dark: '#f2b950', light: '#8a5a00', ansi: 'yellow' },
-  flute: { dark: '#5fd3a8', light: '#1d7a4f', ansi: 'green' },
-  timpani: { dark: '#ff8c6e', light: '#b4441e', ansi: 'red' },
-  cello: { dark: '#d78cff', light: '#8a2fb4', ansi: 'magenta' },
-  guest: { dark: '#a8b3c7', light: '#4f5b70', ansi: 'white' },
-  ok: { dark: '#6bdc9a', light: '#1d7a4f', ansi: 'green' },
-  warn: { dark: '#ffc65c', light: '#8a5a00', ansi: 'yellow' },
-  danger: { dark: '#ff6b6b', light: '#b42318', ansi: 'red' },
+  conductor: { dark: '#c3a6ff', light: '#6b3fd4', ansi: 'planMode' },
+  violin: { dark: '#7eaaff', light: '#2457d6', ansi: 'suggestion' },
+  trumpet: { dark: '#f2b950', light: '#8a5a00', ansi: 'warning' },
+  flute: { dark: '#5fd3a8', light: '#1d7a4f', ansi: 'success' },
+  timpani: { dark: '#ff8c6e', light: '#b4441e', ansi: 'claude' },
+  cello: { dark: '#d78cff', light: '#8a2fb4', ansi: 'merged' },
+  guest: { dark: '#a8b3c7', light: '#4f5b70', ansi: 'inactive' },
+  ok: { dark: '#6bdc9a', light: '#1d7a4f', ansi: 'success' },
+  warn: { dark: '#ffc65c', light: '#8a5a00', ansi: 'warning' },
+  danger: { dark: '#ff6b6b', light: '#b42318', ansi: 'error' },
 }
 
 /** @param {string} hex @returns {number[]} */
@@ -73,7 +74,8 @@ export function setColorMode(next) {
 
 export const colorMode = () => mode
 
-// The pane's ground. Claude Code fills a docked pane with its own grey (xterm 235, `#262626`),
+// The pane's ground. Claude Code fills a docked pane with its own grey (xterm 235, `#262626`; the
+// theme's composerSidebarBackground, which a mod cannot clear),
 // which differs from the terminal's background beside it and lowers every token's contrast. The
 // pane body is painted the ground its tokens were measured on instead: black for a dark or
 // 256-colour terminal, white for a light one. With ANSI names the terminal maps colours through
@@ -88,7 +90,7 @@ export function paint(token) {
   const key = TOKENS[token] ? token : 'guest'
   if (mode === '256') return XTERM[key]?.send ?? TOKENS[key].dark
   const t = TOKENS[key]
-  return mode === 'unknown' ? t.ansi : t[mode] || t.dark
+  return mode === 'ansi' || mode === 'unknown' ? t.ansi : t[mode] || t.dark
 }
 
 // Claude Code's theme names include "dark", "light", "light-daltonized", "dark-ansi" and so on.

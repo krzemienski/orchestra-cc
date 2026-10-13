@@ -6,6 +6,11 @@
 set -eu
 S="$1"; PLUGIN="$(cd "$2" && pwd)"; COLS="$3"; ROWS="$4"; THEME="${5:-dark}"
 shift 4; [ $# -gt 0 ] && shift
+# ORCH_BASE=<dir printed by an earlier launch, without /fixture> reuses that fixture and config
+# (for `--continue`), instead of making fresh ones.
+if [ -n "${ORCH_BASE:-}" ]; then
+  BASE="$ORCH_BASE"; REPO="$BASE/fixture"; CFG="$BASE/config"
+else
 BASE=$(mktemp -d "${TMPDIR:-/tmp}/orch-live-XXXX")
 REPO="$BASE/fixture"; CFG="$BASE/config"
 mkdir -p "$REPO/config" "$REPO/src/db" "$REPO/docs" "$CFG"
@@ -19,7 +24,8 @@ cat > "$CFG/.claude.json" <<EOF
 {"hasCompletedOnboarding": true, "theme": "$THEME", "bypassPermissionsModeAccepted": true,
  "projects": {"$REAL": {"hasTrustDialogAccepted": true, "hasCompletedProjectOnboarding": true}}}
 EOF
-printf '{"permissions":{"defaultMode":"acceptEdits","allow":["Bash","Read","Edit","Write","Glob","Grep"]}}\n' > "$CFG/settings.json"
+printf '{"theme":"%s","permissions":{"defaultMode":"acceptEdits","allow":["Bash","Read","Edit","Write","Glob","Grep"]}}\n' "$THEME" > "$CFG/settings.json"
+fi
 # A detached session takes the tmux server's environment, not this shell's: the login variables
 # are passed in explicitly.
 AUTH=(); while IFS= read -r v; do AUTH+=(-e "$v"); done < <(env | grep -E '^(ANTHROPIC_[A-Z_]+|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_NO_FLICKER)=')
@@ -27,7 +33,7 @@ tmux new-session -d -s "$S" -x "$COLS" -y "$ROWS" -c "$REPO" "${AUTH[@]}" \
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
   -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PID \
   -u CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS -u CLAUDE_EFFORT -u CLAUDE_CODE_EXECPATH -u TMUX -u TMUX_PANE \
-  CLAUDE_CONFIG_DIR="$CFG" TERM=xterm-256color COLORTERM=truecolor \
+  CLAUDE_CONFIG_DIR="$CFG" TERM="${ORCH_TERM-xterm-256color}" COLORTERM="${ORCH_COLORTERM-truecolor}" \
   claude --plugin-dir "$PLUGIN" --agent orchestra:conductor "$@"
 tmux set-option -t "$S" window-size manual >/dev/null
 tmux set-option -t "$S" remain-on-exit on >/dev/null

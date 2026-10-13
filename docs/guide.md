@@ -1,6 +1,8 @@
 # Orchestra guide: install, use, and what you see
 
-This guide covers installing Orchestra, running a performance, and reading every surface it draws. The screenshots come from a real session: Claude Code 2.1.296 in tmux, this repository's plugin, three musicians. They were rendered cell for cell from `tmux capture-pane -e`, with the colours the terminal received.
+This guide covers installing Orchestra, running a performance, and reading every surface it draws. The screenshots come from the 0.2.0 verification run `e2e-evidence/run-20261013T184754-v020-live`: Claude Code 2.1.296 in tmux, a clean config, this repository's plugin, ten musicians started in one message. They were rendered cell for cell from `tmux capture-pane -e`, with the colours the terminal received. [docs/verification.md](verification.md#version-020) quotes each capture.
+
+Orchestra is a picture of how agents relate. It has no sound, speech, voice or narration feature, makes no network call, needs no key, starts no process, and has no browser or web surface. Nothing in it animates: it redraws when an event arrives.
 
 - [1. Requirements](#1-requirements)
 - [2. Install](#2-install)
@@ -8,9 +10,8 @@ This guide covers installing Orchestra, running a performance, and reading every
 - [4. What you see](#4-what-you-see)
 - [5. Colours and your theme](#5-colours-and-your-theme)
 - [6. Commands and keys](#6-commands-and-keys)
-- [7. Optional: narrated and spoken coda](#7-optional-narrated-and-spoken-coda)
-- [8. Files Orchestra writes](#8-files-orchestra-writes)
-- [9. Troubleshooting](#9-troubleshooting)
+- [7. Files Orchestra writes](#7-files-orchestra-writes)
+- [8. Troubleshooting](#8-troubleshooting)
 
 ## 1. Requirements
 
@@ -41,7 +42,7 @@ To check the plugin before you use it:
 
 ```sh
 claude plugin validate ./orchestra-cc/plugin    # ✔ Validation passed
-claude plugin test ./orchestra-cc/plugin        # 3 pass, 0 fail
+claude plugin test ./orchestra-cc/plugin        # 10 pass, 0 fail
 ```
 
 `validate` also lists what the mod can reach: the calls it makes, the environment variables it reads (`COLORTERM`, `TERM`) and that it writes none.
@@ -72,34 +73,75 @@ Installing Orchestra does not change the main agent of your other sessions. The 
 
 ## 4. What you see
 
-Everything Orchestra draws comes from its ledger: the files each musician read and wrote, with their hashes, and the tool calls it made. Nothing comes from what a model says about its own work. Motion runs on a 250 ms frame timer, which runs only while a musician is playing or waiting in an interactive session. An idle session never redraws.
+Everything Orchestra draws comes from its ledger: the files each musician read and wrote, with their hashes, and the tool calls it made. Nothing comes from what a model says about its own work.
 
-### The band above the prompt
+Every surface describes a musician the same way, in the same columns: its state glyph, its name, what it is doing now, and for how long.
 
-![The band: the conductor's baton, then each musician's note, activity bar and measures](screenshots/band.png)
+| Glyph | Word | Colour |
+| --- | --- | --- |
+| `·` | resting | none |
+| `♪` | playing | green |
+| `‖` | waiting on you | amber |
+| `✓` | done | none |
+| `✕` | failed | red |
+| `‼` | conflict | red, bold |
+| `⚠` | stale | amber |
 
-- The conductor's baton beats (`╲ │ ╱ │`) while anyone plays, and rests as `𝄐` when nobody does.
-- Each musician has a coloured name, its state mark, an activity bar and its measures (completed tool calls). The mark is a cycling note `♩ ♪ ♫ ♬` while it plays, a blinking `‖` while it waits on you, `✓` when it is done and `✕` when it stopped. The bar `▁` to `█` counts its tool calls among the last 20 events. A tool running now is named after the count.
-- Open conflicts (`‼`) and stale reads (`⚠`) are counted at the end.
+### Names: ten at once (P0-12)
 
-### The pane: Ensemble
+The same instrument can play several parts at once. The first is `Trumpet`, the second `Trumpet 2`, the third `Trumpet 3`, in the order the conductor assigned them, and a musician keeps its name on every surface for the whole session. In the ten-part run the names were `Trumpet, Trumpet 2, Timpani, Violin, Violin 2, Cello, Trumpet 3, Timpani 2, Flute, Flute 2`, each found on the band, the Ensemble tab and its toasts, with zero `Guest` and no name cut short (capture step-27). Names, not colours, tell musicians apart: there are only six instrument colours.
 
-![Ensemble tab: the stage, each musician's seat, and the newest ledger events](screenshots/ensemble-tab.png)
+### What each musician is doing now (P0-13)
 
-From the top:
+Each musician's second line says what it is doing:
 
-1. **Tabs**: `1: Ensemble  2: Score  3: Artifacts  4: Coda`. Click one, or focus the pane (Ctrl+X then Tab) and press its number.
-2. **The stage**: the conductor's line, with how many musicians are playing, done and failed. For 1.5 s after the conductor assigns a part it adds `cue → Trumpet`. Under it, a pulse runs down the line to the section.
-3. **The section**: one chair per musician. A chair reads `playing`, `waiting on you`, `resting` (done) or `stopped` (failed). For the second after the ledger records a change it steps through the change: `· ♩ ♪ ♫ joining`, `♪ ♩ · resting`, or `♪ ✕ stopping`.
-4. **The handoff**, when one happened in the last 12 events: an arrow carries the file from the musician who wrote it to the one who took it, for example `Violin ━━━▶ Flute  .orchestra/notes/map.md v0`.
-5. **Seats**: each musician's name, role, mark, state and a `▸ details` button. Under it is the open tool call with its target and running time (`Bash npm test · 4s`). Between calls it shows the last finished call and how long it took (`last: Edit src/limiter.ts · 2s`). Then measures, reads and writes, and `⚠ stale read` if its work is out of date. `▸ details` adds the musician's part, every file version it has seen, and its answer.
-6. **Recent**: the six newest ledger events in words, newest first. Finished calls carry their duration.
+- while it plays: `└ <tool> <target> [from vN] · <elapsed>`, for example `└ Bash sleep 45 · 8s`, or `└ Edit config/limits.json from v0 · 2s` for a write, naming the version it is writing from;
+- between calls: its part brief;
+- when it is held: `└ held config/limits.json: Trumpet 2 wrote v1 since you read v0`;
+- when done: `└ done · 3 measures · 1 read · 1 write · 39s`;
+- when failed: `└ failed · Bash ls config/missing.json: Exit code 1: ls: config/miss…`, the first line of the error.
+
+Elapsed time runs from the start of the call to the newest event the ledger recorded, so it moves when something happens, not on a clock. In the ten-part run, every playing musician's line matched the ledger's open call within one redraw: 213 of 213 rows over 35 captures taken 3 s apart (step-25).
+
+### Agent rows (P0-14)
+
+Claude Code 2.1.296 runs parts the conductor starts together as background agents. It draws one block for them, `⏺ 3 background agents launched` with a line per part, not an Agent row per part (W0 capture, `e2e-evidence/run-20261013T181747-v020-w0/step-24`). A mod can only label an Agent row, so these parts carry no Orchestra label in the transcript; each one's second line is on the band and in the Ensemble tab instead. An Agent row the engine does draw for a single part gets `<Name> · <Role>` over the same second line.
+
+### The band above the prompt (P0-15)
+
+![The band with ten musicians playing at once: the rollup, eight rows and the fold](screenshots/band-ten-playing.png)
+
+- **Line 1 is the rollup:** `𝄐 Orchestra  10 playing`, or later `9 done · 1 failed · ⚠ 6 stale`. It counts playing, waiting on you, done and failed, then open conflicts (`‼ 1 conflict`) and stale reads; a zero count is left out.
+- **Then one row per musician not yet done,** in the order parts were assigned: glyph, name, tool, target and elapsed time. A done musician leaves the band; a failed one stays, with its error.
+- **Rows past the band's room fold** into `… 2 more · /orchestra`. Claude Code decides the room: at 160×48 the inline view showed all ten rows (step-71), and the fullscreen view (`CLAUDE_CODE_NO_FLICKER=1`), which keeps its agent list in the same bottom half, gave the band ten rows, so eight musicians and the fold (step-20). When it gives one row, the fold joins line 1:
+
+![The band at 100×20: the rollup and the fold on one row](screenshots/band-folded-100x20.png)
+
+Only the free text is ever cut, with `…`. Glyph, name and time keep their columns.
+
+### The pane: Ensemble (P0-16)
+
+![The Ensemble tab during the ten-part run: the rollup and every musician in two lines](screenshots/ensemble-tab.png)
+
+From the top: the tabs, the rollup, the newest handoff (`Violin → Trumpet 2 · config/limits.json v1`) while it is among the last 12 events, then every musician, conductor first:
+
+```
+♪ Trumpet  Implementer · playing
+  └ Bash sleep 45 · 8s
+  1 measure · 1 read · 0 writes
+```
+
+`⚠ stale read` is added while that musician's work is out of date. Press Tab until a name is highlighted, then Enter, for its details:
+
+![A musician's details: part, versions seen, reads and writes, last calls, answer, and where the full transcript is](screenshots/ensemble-details.png)
+
+The details list the part brief, every file version it has seen (`config/limits.json v0 (now v1)`), its reads and writes with versions (`wrote docs/limits.md v1 from v0`), its last five calls with their times, its answer, and `full transcript: ← in Claude Code's agent view`. A mod cannot open a subagent's transcript; Claude Code's own agent view does.
 
 ### The pane: Score
 
-![Score tab: one staff per musician, bar and beat, the playhead](screenshots/score-tab.png)
+![Score tab: one staff per musician over the newest ledger events](screenshots/score-tab.png)
 
-One staff per musician, with the newest event on the right. The header says where the performance is: `bar 6, beat 2`. The bar comes from the ledger (eight events to a bar), and the beat advances 1 to 4 with the frame timer. On a staff:
+One staff per musician, with the newest event on the right. It is a still picture of the record:
 
 | Mark | Means |
 | --- | --- |
@@ -109,67 +151,74 @@ One staff per musician, with the newest event on the right. The header says wher
 | `·` | A tool call |
 | `○` / `←` | A read / a read of another musician's work (a handoff) |
 | `●` | A write |
-| `♪━━━` | A held note: the open tool call, growing one bar per second |
-| `│` `┃` | The playhead, pulsing on a playing musician's staff |
 | `✓` `✕` | Done / failed |
 | `‼` `⚠` `?` | A conflict / a stale read / a decision you made |
 
 ### The pane: Artifacts
 
-![Artifacts tab: config/limits.json opened, with its versions, reads and the conflict you decided](screenshots/artifacts-tab.png)
+![Artifacts tab: every file touched, with its status](screenshots/artifacts-tab.png)
 
-Every file the musicians touched, newest first, with its current version and who wrote it. Select `▸ details` to see each version's author, base version, line delta and SHA-256, who read which version and at which ledger event, and any conflicts on it with your decision. Above, two trumpets read `config/limits.json` at v0; Trumpet 2 wrote v1 first, so Trumpet's edit from v0 was a conflict, and it was sent back to re-read.
+Every file the musicians touched, newest first, with its current version or status. Select `▸ details` to see each version's author, base version, line delta and SHA-256, who read which version and at which ledger event, and any conflicts on it with your decision.
 
 ### The pane: Coda
 
-![Coda tab: task, status, who contributed what, artifacts changed with their hashes, handoffs, conflicts and failures](screenshots/coda-tab.png)
+![Coda tab: task, status, who contributed what, artifacts changed with their hashes](screenshots/coda-tab.png)
 
-Computed from the ledger alone: the task, the status line, who contributed what, which artifacts changed (with their current SHA-256), handoffs, conflicts with your decisions, failures, stale reads and background commands. It is also written to `.orchestra/performances/<session>-coda.md`. If the spoken coda is on, its result follows under **Spoken by ElevenLabs**.
+Computed from the ledger alone: the task, the status line, who contributed what, which artifacts changed (with their current SHA-256), handoffs, conflicts with your decisions, failures, stale reads and background commands. The same text is in `.orchestra/performances/<session>-coda.md` and printed by `/orchestra coda`.
+
+### Key hints (P0-17)
+
+The pane's last row lists the keys of the tab you are on: `1-4 tabs · tab select · enter details · ↑↓ scroll · esc close` on Ensemble and Artifacts, `1-4 tabs · ↑↓ scroll · esc close` on Score and Coda. It stays the last row while a long tab scrolls (step-32).
+
+### The outcome line (P0-18)
+
+![The outcome line logged when the conductor's turn ended](screenshots/outcome-line.png)
+
+When the conductor's turn ends, Orchestra writes the coda file and logs one line: `𝄐 Coda · 10 musicians · 5 files · 1 conflict · 1 failed · 1m 31s · /orchestra coda`. Its counts are the coda's: the musicians who contributed, the artifacts changed, the conflicts and the failed parts. In the ten-part run the coda file listed 10 contributors, 5 artifacts, 1 conflict and 1 failure (step-22, step-23).
 
 ### Conflicts: the question dialog
 
 ![A held write: what the other musician added, what this one wants to change, and Claude Code's question dialog](screenshots/conflict-dialog.png)
 
-When a musician is about to overwrite a newer version than the one it saw, Orchestra holds the write and asks you in Claude Code's own question dialog. *Let it write* lets it land; *Send it back to re-read* denies it and tells the musician to read the file again and reapply its change; *Show both versions* (the state above) draws, above the question, the lines the other musician added since this one's version and the change this one wants to make, then asks again. In a `claude -p` run nobody can answer, so the write is sent back.
+When a musician is about to overwrite a newer version than the one it saw, Orchestra holds the write and asks you in Claude Code's own question dialog. *Let it write* lets it land; *Send it back to re-read* denies it and tells the musician to read the file again and reapply its change; *Show both versions* (above) draws the lines the other musician added since this one's version and the change this one wants to make, then asks again. In a `claude -p` run nobody can answer, so the write is sent back.
 
 ### Toasts
 
-![Two toasts: Trumpet 3 joins the ensemble as Implementer, and a handoff of config/limits.json v1 from Trumpet 2](screenshots/toasts.png)
+![Toasts: two musicians joining and a handoff](screenshots/toasts.png)
 
-In the top right of the transcript: when a musician joins (with its role) and rests (with its measures, reads and writes), when a tool call that ran 3 s or more finishes (`Timpani finished Bash npm test · 12s`), and for handoffs, stale reads, failures, decided conflicts and a ready coda.
+In the top right of the transcript: when a musician joins (with its role) and rests (with its measures, reads and writes), when a tool call that ran 3 s or more finishes, and for handoffs (`Orchestra · handoff: Timpani read .orchestra/notes/map.md v0 from Violin`), stale reads, failures, decided conflicts and a ready coda.
 
-### Agent rows, spinner and band
+### Spinner and status line
 
-![An Agent row labelled Trumpet 3 · Implementer · 0 measures, the spinner naming who plays, and the band](screenshots/agent-row-spinner-band.png)
-
-- **Agent rows** in the transcript carry a line above Claude Code's own: the musician's mark, name, role and measures, in its colour. When several parts start in one message, Claude Code draws one summary row a mod cannot redraw, so those are not labelled.
-- **The spinner** names who is playing what, on which file, for how long, what a musician between calls last finished, and who is waiting on you: `· 1 playing: Trumpet 3`, or `· 2 playing: Trumpet Edit limiter.js · 4s · Flute after Read (1s)`.
-- **The band** sits under it, as described above.
-
-### Status line
+- **The spinner** names who is playing what: `10 playing: Trumpet Bash sleep 45 · 5s · Trumpet 2 Bash sleep 25 · 5s +8`, and who is waiting on you.
+- **The status line** under the prompt carries the rollup's counts with the files changed:
 
 ![The status line under the prompt](screenshots/status-line.png)
 
-Under the prompt: `Orchestra · 1 playing · 3 done · 3 artifacts changed`, with failures, conflicts and stale reads added when there are any.
+### Nothing moves by itself (P0-19)
 
-## 5. Colours and your theme
+Orchestra draws no animation and runs no frame timer. It redraws when the ledger records an event from the conductor or one of its musicians; events from loops it does not show (Claude Code's own background forks, another plugin's agents) are recorded but do not redraw. In the verification run, one musician sat in `sleep 90` while a conflict question was open, and every row Orchestra drew was identical across 30 captures 2 s apart (step-51); the same check on 0.1.7 found 29 of 29 captures different. Claude Code's spinner keeps moving, which is how you see that work is happening.
+
+## 5. Colours and your theme (P0-20)
 
 Orchestra follows your terminal, not a palette of its own.
 
 - **The band, status line, spinner and toasts** paint no background. They sit on the terminal's own background, whatever it is.
-- **The pane** is the one exception. Claude Code fills a docked pane with its own grey (xterm 235, `#262626`), which made the pane a different colour from the rest of the screen. Orchestra paints the pane body with the background its colours were measured on, so the inside matches the terminal around it: black on a dark terminal, white on a light one. Under an ANSI theme, Claude Code's own fill is left alone (see the last row of the table). The divider and close mark on the pane's frame still belong to Claude Code.
-- **Instrument colours** are chosen for contrast, each at least 4.5:1 against that background. The lowest are 7.57 on black, 5.32 on white, and 5.77 for the exact 256-colour value sent.
+- **The pane** is the one exception. Claude Code fills a docked pane with its own grey (`#262626`). When your theme is known, Orchestra paints the pane body with the background its colours were measured on: black on a dark terminal, white on a light one. When it is not, Orchestra paints nothing.
+- **Colours** are chosen for contrast, each at least 4.5:1 against that background. The lowest are 7.57 on black, 5.32 on white, and 5.77 for the exact 256-colour value sent (`node .planning/contracts/palette-proof.mjs`).
 
-Which colours you get depends on your Claude Code theme (`/theme`) and on what the terminal says it supports:
+Which colours you get depends on your Claude Code theme (`/theme`) and on what the terminal says it supports. Each row was captured live (step-56, step-57):
 
-| Your setup | Colours | Pane ground |
-| --- | --- | --- |
-| Dark theme, `COLORTERM=truecolor` (or `24bit`) | Hex values measured on black | Black |
-| Light theme, `COLORTERM=truecolor` | Hex values measured on white | White |
-| `TERM` contains `256`, no truecolor | The nearest xterm-256 entry, sent so Claude Code's renderer lands on that exact entry | Black |
-| An ANSI theme (`dark-ansi`, `light-ansi`), or none of the above | The terminal's own 16 colours | Claude Code's own (it is mapped through your terminal palette) |
+| Your setup | Colours | Pane ground | Seen in the capture |
+| --- | --- | --- | --- |
+| Dark theme, `COLORTERM=truecolor` | Hex values measured on black | Black | Trumpet `38;2;242;185;80`, ground `48;2;0;0;0` |
+| Light theme, `COLORTERM=truecolor` | Hex values measured on white | White | Trumpet `38;2;138;90;0`, ground `48;2;255;255;255` |
+| `TERM` contains `256`, no truecolor | The nearest xterm-256 entry | Black | Trumpet `38;5;215`, ground `48;5;16` |
+| A terminal with neither | The terminal's own 16 colours | Claude Code's own | `36`, `32`, `31`, `93`; no `38;` code |
+| An ANSI theme (`dark-ansi`, `light-ansi`) | Colour names, which Claude Code itself draws as 24-bit colours on a truecolor terminal | Claude Code's own | `yellow` drawn as `38;2;245;217;10` |
+| A theme Orchestra cannot read or name (here `auto`) | Colour names | Nothing painted: Claude Code's own `#262626` | ground `48;2;38;38;38` only |
 
-A change of theme is picked up within 2 seconds. To check what your terminal says, run `echo $COLORTERM $TERM`. In tmux, `COLORTERM` is set to `truecolor` inside panes.
+A change of theme is picked up within 2 seconds. To check what your terminal says, run `echo $COLORTERM $TERM`. tmux passes 256 colours or truecolor depending on its own settings, so a capture in tmux may not show what your terminal draws directly.
 
 ## 6. Commands and keys
 
@@ -178,8 +227,9 @@ A change of theme is picked up within 2 seconds. To check what your terminal say
 | `/orchestra` | Opens the pane |
 | `/orchestra coda` | Prints the coda for this session |
 | `/orchestra ledger` | Prints the ledger's path, event count and status |
-| `/orchestra voice` | Reads the coda aloud with ElevenLabs (see below) |
 | `/orchestra close` | Closes the pane |
+
+Any other argument answers `Unknown argument: <arg>. Use coda, ledger or close.` and leaves the pane shut. `/orchestra voice`, which spoke the coda in 0.1.6–0.1.7, now gets exactly that answer (step-59), and the plugin has no options (P0-21).
 
 | Key | In the pane |
 | --- | --- |
@@ -187,22 +237,13 @@ A change of theme is picked up within 2 seconds. To check what your terminal say
 | Ctrl+X, then X | Closes the pane even while focus is elsewhere |
 | Ctrl+X, then an arrow | Resizes the pane |
 | `1` `2` `3` `4` | Switches tab while the pane has focus |
-| Tab, ↑ ↓, Enter | Moves between and presses buttons (`▸ details`) |
+| Tab, Enter | Moves between and presses buttons: a tab, a musician's name, `▸ details` |
 | ↑ ↓ and Claude Code's page and Home/End keys | Scrolls the tab under its fixed tab row |
 | Esc | Closes the pane |
 
 The mouse works too: click a tab or a button.
 
-## 7. Optional: narrated and spoken coda
-
-Both are off by default and set in `/config`, under Orchestra's options.
-
-- **Narrate the coda** (`narrateCoda`): Claude retells the coda as prose, in a second file beside it. It needs `npm install --prefix <plugin directory>/narrate` once, and makes one Claude call per narration with your login.
-- **Speak the coda** (`voiceCoda`): ElevenLabs reads the narration, or the coda, into `<session>-coda.mp3`. It needs your ElevenLabs API key in `ELEVENLABS_API_KEY` and a voice id. Step-by-step setup, the voice and language choice, models and costs are in [asset-handout.md](asset-handout.md).
-
-The mod itself makes no network call. Both helpers run as separate processes on fixed command lines, with their input on standard input.
-
-## 8. Files Orchestra writes
+## 7. Files Orchestra writes
 
 All files go in the project where the performance runs, under `.orchestra/`, which Orchestra gitignores (`.orchestra/.gitignore` holds `*`):
 
@@ -211,12 +252,10 @@ All files go in the project where the performance runs, under `.orchestra/`, whi
 | `.orchestra/score.md` | The conductor's plan |
 | `.orchestra/performances/<session>.0001.jsonl` … | The ledger, in segments of 500 events |
 | `.orchestra/performances/<session>-coda.md` | The coda, from the ledger |
-| `.orchestra/performances/<session>-coda-narrated.md` | Claude's retelling, if narration is on |
-| `.orchestra/performances/<session>-coda.mp3` | The spoken coda, if voice is on |
 
 The musicians may also write notes and logs under `.orchestra/notes/` and `.orchestra/logs/`. Those are their work, recorded like any other file.
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 | You see | Do |
 | --- | --- |
@@ -225,5 +264,6 @@ The musicians may also write notes and logs under `.orchestra/notes/` and `.orch
 | Colours look wrong or flat | Run `echo $COLORTERM $TERM`, and see the table in [section 5](#5-colours-and-your-theme). An ANSI theme uses your terminal's 16 colours |
 | Pressing `2` types into the prompt | The pane does not have focus. Empty the prompt, press Ctrl+X then Tab, or click the tab |
 | A musician's write was "sent back" | It tried to overwrite a newer version than the one it read. It re-reads the file and reapplies its change; the coda records it |
-| `/orchestra voice` says the key is not set | Set `ELEVENLABS_API_KEY` in the shell you start Claude Code from, then restart it (see [asset-handout.md](asset-handout.md)) |
+| No band while Claude Code lists its running agents in a short terminal | Claude Code gives the band no rows then (seen at 100×20). The status line keeps the counts; `/orchestra` opens the pane |
+| `/orchestra voice` says `Unknown argument` | Voice was removed in 0.2.0; Orchestra makes no sound |
 | An edit to the mod does nothing | With `--plugin-dir`, the mod reloads at the end of the current turn. The ledger is replayed, so nothing is lost |

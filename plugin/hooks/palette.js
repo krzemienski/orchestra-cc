@@ -6,8 +6,9 @@
 // the dark value, so what it draws is what was measured. Anything less, an ANSI theme, or a theme
 // Orchestra cannot read or name gets a Claude Code theme key (`ansi` below): the engine draws each
 // key in the person's own theme, which under an ANSI theme is a 16-colour code the terminal maps
-// through its palette (a colour name would be drawn as 24-bit). With an unknown theme no background
-// is known to measure against, so nothing is painted.
+// through its palette (a colour name would be drawn as 24-bit). The keys chosen measure at least
+// 4.5:1 on the dark and light presets' `inverseText` (black, white), the ground an unknown theme's
+// docked pane is painted (see ground()).
 
 export const MIN_CONTRAST = 4.5
 export const BLACK = '#000000'
@@ -15,10 +16,10 @@ export const WHITE = '#ffffff'
 
 export const TOKENS = {
   conductor: { dark: '#c3a6ff', light: '#6b3fd4', ansi: 'planMode' },
-  violin: { dark: '#7eaaff', light: '#2457d6', ansi: 'suggestion' },
+  violin: { dark: '#7eaaff', light: '#2457d6', ansi: 'remember' },
   trumpet: { dark: '#f2b950', light: '#8a5a00', ansi: 'warning' },
   flute: { dark: '#5fd3a8', light: '#1d7a4f', ansi: 'success' },
-  timpani: { dark: '#ff8c6e', light: '#b4441e', ansi: 'claude' },
+  timpani: { dark: '#ff8c6e', light: '#b4441e', ansi: 'diffRemovedWord' },
   cello: { dark: '#d78cff', light: '#8a2fb4', ansi: 'merged' },
   guest: { dark: '#a8b3c7', light: '#4f5b70', ansi: 'inactive' },
   ok: { dark: '#6bdc9a', light: '#1d7a4f', ansi: 'success' },
@@ -79,10 +80,16 @@ export const colorMode = () => mode
 // which differs from the terminal's background beside it and lowers every token's contrast. The
 // pane body is painted the ground its tokens were measured on instead: black for a dark or
 // 256-colour terminal, white for a light one. With ANSI names the terminal maps colours through
-// its own palette and no hex is right, and with an unknown theme no background is known, so in both
-// the engine's fill is left alone.
-export function ground() {
-  if (mode === 'ansi' || mode === 'unknown') return undefined
+// its own palette and no hex is right, so the engine's fill is left alone. With a theme Orchestra
+// cannot name (`auto`, a custom theme, a failed read) a docked pane is painted the theme key
+// `inverseText`, which Claude Code resolves in the person's own theme: black under a dark one, white
+// under a light one, the same ground as above, so its grey fill does not show. An inline pane has
+// no fill, so there nothing is painted.
+export const THEME_GROUND = 'inverseText'
+/** @param {'dock'|'inline'|undefined} placement */
+export function ground(placement = 'dock') {
+  if (mode === 'ansi') return undefined
+  if (mode === 'unknown') return placement === 'dock' ? THEME_GROUND : undefined
   return mode === 'light' ? WHITE : BLACK
 }
 

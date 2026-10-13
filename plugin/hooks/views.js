@@ -172,7 +172,8 @@ export function outcomeLine(state, ms) {
 const HEADER_ROWS = 2
 const FOOTER_ROWS = 1
 
-export function pane(el, state, view, width, bodyRows) {
+/** @param {'dock'|'inline'} [placement] */
+export function pane(el, state, view, width, bodyRows, placement = 'dock') {
   const render = { ensemble, score, artifacts, coda: codaTab }[view.tab]
   const body = render(el, state, view, width)
   // The body sits on the ground its colours were measured on, not on Claude Code's grey pane fill.
@@ -180,7 +181,7 @@ export function pane(el, state, view, width, bodyRows) {
   // While the tab scrolls, the tree's last row is the hidden one (see paneWindow), so the key hints
   // go just above it and stay the last row shown.
   const hidden = view.maxOffset ? [blank(el)] : []
-  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(), children: [tabBar(el, view), blank(el), ...rows, keyHints(el, view.tab, where), ...hidden] })
+  return el.Box({ flexDirection: 'column', width, backgroundColor: ground(placement), children: [tabBar(el, view), blank(el), ...rows, keyHints(el, view.tab, where), ...hidden] })
 }
 
 const tabBar = (el, view) => el.Box({

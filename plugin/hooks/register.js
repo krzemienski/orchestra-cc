@@ -1410,7 +1410,7 @@ export function register(on) {
     const el = $.ui.resolve(e)
     const width = Math.max(30, e.props.bodyColumns || 60)
     if (!isPerformance(state)) {
-      return el.Box({ flexDirection: 'column', backgroundColor: ground(), children: [
+      return el.Box({ flexDirection: 'column', backgroundColor: ground(e.props.placement), children: [
         el.Text({ bold: true, children: ['Orchestra'] }),
         el.Text({ dimColor: true, children: ['No performance yet: one starts when the conductor (claude --agent orchestra:conductor) assigns a part to a musician.'] }),
       ] })
@@ -1424,7 +1424,7 @@ export function register(on) {
       $.ui.invalidate('ui.render')
     }
     if (!TABS.some(([id]) => id === view.tab)) view.tab = 'ensemble'
-    return pane(el, state, view, width, e.props.scroll?.bodyRows)
+    return pane(el, state, view, width, e.props.scroll?.bodyRows, e.props.placement)
   })
 
   // The pane scrolls its own rows under the tab bar, which stays in place (views.js paneWindow).

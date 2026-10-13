@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { ground, paint, setColorMode, modeFor, contrast, rendererIndex, TOKENS, XTERM, MIN_CONTRAST, BLACK, WHITE } from '../../plugin/hooks/palette.js'
 
 // Claude Code theme keys: under an ANSI theme the engine draws each as a 16-colour code.
-const ANSI = ['planMode', 'suggestion', 'warning', 'success', 'claude', 'merged', 'inactive', 'error']
+const ANSI = ['planMode', 'remember', 'warning', 'success', 'diffRemovedWord', 'merged', 'inactive', 'error']
 
 for (const [k, t] of Object.entries(TOKENS)) {
   assert(contrast(t.dark, BLACK) >= MIN_CONTRAST, `${k} dark contrast`)
@@ -41,13 +41,14 @@ for (const mode of ['dark', 'light', '256', 'ansi', 'unknown']) {
   }
 }
 setColorMode('dark')
-// The pane ground is the background each mode's contrast was measured on; ANSI and an unknown theme
-// leave Claude Code's.
-const GROUNDS = { dark: BLACK, '256': BLACK, light: WHITE, ansi: undefined, unknown: undefined }
+// The pane ground is the background each mode's contrast was measured on; ANSI leaves Claude Code's;
+// an unknown theme paints a docked pane the theme's own inverseText and an inline one nothing.
+const GROUNDS = { dark: BLACK, '256': BLACK, light: WHITE, ansi: undefined, unknown: 'inverseText' }
 for (const [m, want] of Object.entries(GROUNDS)) {
   setColorMode(m)
   assert.equal(ground(), want, `ground in ${m} mode`)
   console.log(`ground ${m.padEnd(7)} ${want ?? '(nothing painted)'}`)
+  if (m === 'unknown') assert.equal(ground('inline'), undefined, 'an inline pane under an unknown theme is not painted')
 }
 setColorMode('dark')
 console.log('palette proof: OK')

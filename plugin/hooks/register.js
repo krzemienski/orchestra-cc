@@ -411,7 +411,7 @@ async function recordIn(at, $, fields, quiet = false) {
     // never drawn, so their events neither move the time Orchestra shows nor redraw it.
     if (applied.some((x) => !x.agent || x.agent === CONDUCTOR || state.musicians[x.agent]?.assigned)) {
       view.now = ts
-      $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
+      showStatus($)
       $.ui.invalidate('ui.render')
     }
   } catch (err) {
@@ -421,6 +421,15 @@ async function recordIn(at, $, fields, quiet = false) {
 }
 
 const record = ($, fields, quiet = false) => recordIn(epoch, $, fields, quiet)
+
+// The rows Claude Code last gave the band. With none (a short terminal while it lists running
+// agents), the band cannot show, so the status line under the prompt carries its pointer.
+let bandRows = Infinity
+function showStatus($) {
+  if (!isPerformance(state)) return $.ui.status(undefined)
+  const inBand = musicians(state).filter((m) => m.state !== 'done').length
+  $.ui.status(`${statusLine(state)}${bandRows < 1 && inBand ? ` · … ${inBand} more · /orchestra` : ''}`)
+}
 
 // Toasts for what an event changed: stale reads, handoffs and failures.
 function toastNews($, before, applied = []) {
@@ -1030,7 +1039,7 @@ async function startSession($) {
     if (closing.length) await writeCoda($)
   }
   if (state.codaSeq && codaFile) view.codaPath = relative(codaFile)
-  $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
+  showStatus($)
   $.ui.invalidate('ui.render')
 }
 
@@ -1426,7 +1435,11 @@ export function register(on) {
     if (!isPerformance(state)) return next(e)
     const el = $.ui.resolve(e)
     const theirs = await next(e)
-    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80), view.now, e.props.maxRows || Infinity)
+    const rows = e.props.maxRows ?? Infinity
+    const roomChanged = (rows < 1) !== (bandRows < 1)
+    bandRows = rows
+    if (roomChanged) showStatus($)
+    const mine = band(el, state, Math.max(30, e.props.bodyColumns || 80), view.now, rows)
     return el.Box({ flexDirection: 'column', children: [mine, theirs].filter(Boolean) })
   })
 

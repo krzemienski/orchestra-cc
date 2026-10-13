@@ -52,7 +52,7 @@ order = sorted(times)
 names_by_len = sorted(by_name, key=len, reverse=True)
 REDRAW_S = 0.1
 checked = bad = 0
-per = {'band': 0, 'ensemble': 0}
+per = {'band': 0, 'ensemble': 0, 'agent row': 0}
 report = []
 for i, f in enumerate(order):
     lines = (frames / f'{f}.txt').read_text().split('\n')
@@ -98,6 +98,20 @@ for i, f in enumerate(order):
         if call_now is None and not any(word == c for c in ('Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob')):
             word, text = '', body
         seen.append(('ensemble', m.group(1), word, text))
+    # Agent rows: "<Name> · <Role>" over "  └ <glyph> <tool> <target> · <elapsed>".
+    TOOLS = ('Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob', 'MultiEdit', 'NotebookEdit')
+    for y, l in enumerate(left):
+        m = re.match(r'^(\S+(?: \d+)?) · [A-Z][a-z]+\s*$', l)
+        if not m or m.group(1) not in by_name or y + 1 >= len(left):
+            continue
+        nxt = left[y + 1].strip()
+        if not nxt.startswith('└ ♪ '):
+            continue
+        body = nxt[4:]
+        word, _, text = body.partition(' ')
+        if word not in TOOLS:
+            word, text = '', body
+        seen.append(('agent row', m.group(1), word, text))
     for where, name, word, text in seen:
         agent = by_name[name]
         # Every state the ledger held in the redraw before the frame: at its start and after each
@@ -113,5 +127,5 @@ for i, f in enumerate(order):
             report.append(f'{f} {where:8} {name:10} shows [{word}] [{text[:60]}]; ledger at frame time: {want}')
 for r in report[:40]:
     print('MISMATCH', r)
-print(f'frames {len(order)}; rows checked {checked} (band {per["band"]}, Ensemble {per["ensemble"]}); matching the ledger (within one redraw) {checked - bad}; mismatches {bad}')
+print(f'frames {len(order)}; rows checked {checked} (band {per["band"]}, Ensemble {per["ensemble"]}, Agent rows {per["agent row"]}); matching the ledger (within one redraw) {checked - bad}; mismatches {bad}')
 sys.exit(1 if bad else 0)

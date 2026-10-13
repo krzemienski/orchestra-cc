@@ -28,7 +28,7 @@ printf '{"theme":"%s","permissions":{"defaultMode":"acceptEdits","allow":["Bash"
 fi
 # A detached session takes the tmux server's environment, not this shell's: the login variables
 # are passed in explicitly.
-AUTH=(); while IFS= read -r v; do AUTH+=(-e "$v"); done < <(env | grep -E '^(ANTHROPIC_[A-Z_]+|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_NO_FLICKER)=')
+AUTH=(); while IFS= read -r v; do AUTH+=(-e "$v"); done < <(env | grep -E '^(ANTHROPIC_[A-Z_]+|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_NO_FLICKER|CLAUDE_CODE_FORK_SUBAGENT)=')
 tmux new-session -d -s "$S" -x "$COLS" -y "$ROWS" -c "$REPO" "${AUTH[@]}" \
   env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN \
   -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_PID \

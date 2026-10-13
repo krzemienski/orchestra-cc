@@ -362,35 +362,5 @@ function codaTab(el, state, view, width) {
     ...para(el, view.codaPath ? `Written to ${view.codaPath}` : 'The coda file is written when the conductor\'s turn ends.', '', width, { dimColor: true }),
     blank(el),
     ...codaSections(state, c).flatMap(([title, items]) => section(title, items)),
-    ...narrationBlock(el, view.narration, width),
-    ...voiceBlock(el, view.voice, width),
-  ]
-}
-
-// The spoken coda: where the MP3 is, which voice read it, or why it could not be made.
-function voiceBlock(el, voice, width) {
-  if (!voice) return []
-  const note = {
-    speaking: 'ElevenLabs is reading it aloud…',
-    failed: `Could not speak it: ${voice.detail}`,
-    done: `Written to ${voice.path} · ${voice.detail}`,
-  }[voice.status]
-  return [blank(el), el.Text({ bold: true, children: ['Spoken by ElevenLabs'] }), ...para(el, note, '', width, { dimColor: voice.status !== 'failed' })]
-}
-
-// Claude's retelling of the coda, shown after the coda and labelled as a retelling.
-function narrationBlock(el, narration, width) {
-  if (!narration) return []
-  const note = {
-    writing: 'Claude is retelling the coda above…',
-    failed: `Could not narrate the coda: ${narration.text}`,
-    done: `A retelling of the coda above, written to ${narration.path}. The coda is the record.`,
-  }[narration.status]
-  const paragraphs = narration.status === 'done' ? narration.text.split(/\n\s*\n/) : []
-  return [
-    blank(el),
-    el.Text({ bold: true, children: ['Narrated by Claude'] }),
-    ...para(el, note, '', width, { dimColor: true }),
-    ...paragraphs.flatMap((p) => [blank(el), ...para(el, p.trim(), '', width)]),
   ]
 }

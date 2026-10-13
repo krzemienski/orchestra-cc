@@ -47,9 +47,6 @@ const THEME_RECHECK_MS = 2000
 const SPINNER_SHOWN = 2
 // A finished tool call gets its own toast only when it ran at least this long.
 const LONG_CALL_MS = 3000
-// One narration: the Agent SDK starts a Claude Code process and makes one model call.
-const NARRATE_TIMEOUT_MS = 180_000
-const VOICE_TIMEOUT_MS = 120_000
 let seq = 0
 // The highest sequence number already written to a segment file.
 let persisted = 0
@@ -129,18 +126,6 @@ let restoreTo = null
 let codaWrites = Promise.resolve()
 /** @type {{ cancel: () => void } | null} */
 let themeTimer = null
-// The narrated coda (the narrateCoda option): Claude's retelling of the coda, in a file beside it.
-// The coda text last sent to be narrated, so an unchanged coda is not narrated twice, and the
-// number of the latest narration, so an older one that finishes late is dropped.
-let narrateCoda = false
-let narratedText = ''
-let narrations = 0
-// The spoken coda (the voiceCoda option): ElevenLabs reads the narration, or the coda when there is
-// none, into an MP3 beside the coda, through the voice.mjs sidecar. Same dedupe as the narration.
-/** @type {{ on: boolean, voiceId: string, language: string, model: string }} */
-let voice = { on: false, voiceId: '', language: 'en', model: '' }
-let spokenText = ''
-let speakings = 0
 // Musicians the conductor sent more work after their part ended, until that part.resumed is recorded.
 const resumedByMessage = new Set()
 // Write tools let through and still landing: whether another loop's shell command ran meanwhile,
@@ -168,14 +153,12 @@ const textKey = (agent, path) => `${agent}\u0000${path}`
  * @typedef {{ tab: string, selected: { type: string, id: string }|null, codaPath: string|null,
  *   held: { path: string, writer: string, against: string, tool: string, current: number, base: number|null,
  *     changed: string[]|null, currentText: string|null, proposed: string }|null,
- *   narration: { status: 'writing'|'done'|'failed', path: string, text: string }|null,
- *   voice?: { status: 'speaking'|'done'|'failed', path: string, detail: string }|null,
  *   offset?: number, now: number, setTab: (tab: string) => void, select: (type: string, id: string) => void }} View
  */
 // `now` is the time of the newest recorded event, so every elapsed time shown is measured at the
 // last event and nothing Orchestra draws changes until the next one arrives.
 /** @type {View} */
-const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, narration: null, now: 0, setTab: () => {}, select: () => {} }
+const view = { tab: 'ensemble', selected: null, codaPath: null, held: null, now: 0, setTab: () => {}, select: () => {} }
 
 const segmentOf = (n) => Math.ceil(n / SEGMENT_EVENTS)
 const segmentFile = (n) => `${ledgerBase}.${String(n).padStart(4, '0')}.jsonl`
@@ -481,108 +464,10 @@ async function writeCoda($, announce = false, at = epoch) {
     if (settled && announce) {
       $.ui.log(`Orchestra coda: ${line}. Written to ${relative(file)}`)
       $.ui.toast('Orchestra · coda ready: /orchestra and open the Coda tab', { timeoutMs: 6000 })
-      // Not awaited: a narration takes seconds, and later coda writes must not wait on it.
-      if (narrateCoda) narrate($, text, file, at).catch((err) => warn($, 'narrate', `could not narrate the coda (${err instanceof Error ? err.message : String(err)})`))
-      else if (voice.on) speakCoda($, spokenFrom(text), file, at).catch((err) => warn($, 'voice', `could not speak the coda (${err instanceof Error ? err.message : String(err)})`))
     }
   }).catch((err) => warn($, 'coda', `could not write the coda to ${relative(file)} (${err instanceof Error ? err.message : String(err)})`))
   await recordIn(at, $, { type: 'coda', path: relative(file), settled })
   view.codaPath = relative(file)
-}
-
-// Has Claude retell the coda in a file beside it, through the Agent SDK helper in narrate/. The
-// coda goes on standard input, never in the command line. A failure is shown and the coda itself
-// is untouched; the same coda is tried again the next time the conductor's turn ends.
-async function narrate($, coda, codaPath, at) {
-  if (at !== epoch || coda === narratedText) return
-  narratedText = coda
-  const run = ++narrations
-  const current = () => at === epoch && run === narrations
-  const file = codaPath.replace(/-coda\.md$/, '-coda-narrated.md')
-  const show = (status, text) => {
-    view.narration = { status, path: relative(file), text }
-    $.ui.invalidate('ui.render')
-  }
-  const fail = (reason) => {
-    if (!current()) return
-    narratedText = ''
-    show('failed', reason)
-    warn($, 'narrate', `could not narrate the coda (${reason})`)
-  }
-  show('writing', '')
-  const dir = `${$.plugin.root}/narrate`
-  if (!(await $.fs.stat(`${dir}/node_modules/@anthropic-ai/claude-agent-sdk`).catch(() => undefined))) {
-    return fail(`its dependency is not installed: run npm install --prefix ${dir}`)
-  }
-  let out
-  try {
-    out = await $.process.run(['node', `${dir}/narrate.mjs`], { stdin: coda, timeoutMs: NARRATE_TIMEOUT_MS })
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err))
-  }
-  if (out.exitCode !== 0) return fail(out.stderr.trim().split('\n').pop() || `the narrator exited with code ${out.exitCode}`)
-  if (!current()) return
-  const text = out.stdout.trim()
-  try {
-    await $.fs.write(file, ['# Orchestra coda, narrated', '', `Claude's retelling of ${relative(codaPath)}. The coda is the record: where the two differ, the coda is right.`, '', text, ''].join('\n'))
-  } catch (err) {
-    return fail(`could not write ${relative(file)} (${err instanceof Error ? err.message : String(err)})`)
-  }
-  if (!current()) return
-  show('done', text)
-  $.ui.toast('Orchestra · narrated coda ready in the Coda tab', { timeoutMs: 6000 })
-  if (voice.on) await speakCoda($, text, codaPath, at)
-}
-
-// The coda as plain sentences for a voice: no Markdown marks, no ledger path or hashes.
-function spokenFrom(markdown) {
-  return markdown.split('\n')
-    .filter((l) => !/^Ledger: /.test(l))
-    .map((l) => l.replace(/^#+\s*/, '').replace(/^- /, '').replace(/`/g, '').replace(/\s*sha256:[0-9a-f]+/g, ''))
-    .filter((l) => l.trim() && l.trim() !== 'none')
-    .map((l) => (/[.!?:]$/.test(l.trim()) ? l.trim() : `${l.trim()}.`))
-    .join('\n')
-}
-
-// Has ElevenLabs read `text` into `<session>-coda.mp3` beside the coda, through the voice.mjs
-// sidecar: a fixed command line, the request on standard input. The sidecar reads the API key from
-// the environment Claude Code was started in; Orchestra never reads it. A failure is shown and
-// nothing else changes.
-async function speakCoda($, text, codaPath, at) {
-  if (at !== epoch || !text.trim() || text === spokenText) return
-  spokenText = text
-  const run = ++speakings
-  const current = () => at === epoch && run === speakings
-  const out = codaPath.replace(/-coda\.md$/, '-coda.mp3')
-  const show = (status, detail) => {
-    view.voice = { status, path: relative(out), detail }
-    $.ui.invalidate('ui.render')
-  }
-  show('speaking', '')
-  let res
-  try {
-    res = await $.process.run(['node', `${$.plugin.root}/narrate/voice.mjs`], {
-      stdin: JSON.stringify({ text, out, voiceId: voice.voiceId, language: voice.language, model: voice.model || undefined }),
-      timeoutMs: VOICE_TIMEOUT_MS,
-    })
-  } catch (err) {
-    res = { exitCode: 1, stdout: '', stderr: err instanceof Error ? err.message : String(err) }
-  }
-  if (!current()) return
-  if (res.exitCode !== 0) {
-    spokenText = ''
-    const reason = res.stderr.trim().split('\n').pop() || `the voice helper exited with code ${res.exitCode}`
-    show('failed', reason)
-    warn($, 'voice', `could not speak the coda (${reason})`)
-    return
-  }
-  let info = {}
-  try {
-    info = JSON.parse(res.stdout.trim().split('\n').pop() || '{}')
-  } catch {}
-  const detail = `${info.voice || 'voice'} · ${voice.language}${info.verified ? ', verified' : ', no language data for this voice'}${info.truncated ? ' · cut to fit the model limit' : ''}`
-  show('done', detail)
-  $.ui.toast(`Orchestra · spoken coda ready: ${relative(out)}`, { timeoutMs: 6000 })
 }
 
 // Lines in `now` that are not in `then`, counted as a multiset.
@@ -1119,9 +1004,7 @@ async function startSession($) {
   guarding.clear()
   lastText.clear()
   restoreTo = null
-  narratedText = ''
-  spokenText = ''
-  Object.assign(view, { codaPath: null, held: null, narration: null, voice: null, selected: null, offset: 0 })
+  Object.assign(view, { codaPath: null, held: null, selected: null, offset: 0 })
   state = folded
   seq = events.length ? events[events.length - 1].seq : 0
   persisted = seq
@@ -1150,10 +1033,8 @@ function retireSession($) {
   seq = 0
   persisted = 0
   restoreTo = null
-  narratedText = ''
-  spokenText = ''
   askingFiles.clear()
-  Object.assign(view, { codaPath: null, held: null, narration: null, voice: null, selected: null, offset: 0 })
+  Object.assign(view, { codaPath: null, held: null, selected: null, offset: 0 })
   $.ui.status(undefined)
   $.ui.invalidate('ui.render')
 }
@@ -1304,17 +1185,10 @@ function mentionsIn(prompt) {
   return Object.keys(state.artifacts).filter((p) => text.includes(p))
 }
 
-export function register(on, options) {
-  narrateCoda = options?.narrateCoda === true
-  voice = {
-    on: options?.voiceCoda === true,
-    voiceId: String(options?.voiceId || ''),
-    language: String(options?.voiceLanguage || 'en').toLowerCase(),
-    model: String(options?.voiceModel || ''),
-  }
+export function register(on) {
   on('session.start', async ($, e, next) => {
     await safely($, 'set up its command and theme', async () => {
-      await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | voice | close', immediate: true })
+      await $.command.register({ name: 'orchestra', description: 'Open the Orchestra pane, or /orchestra coda | ledger | close', immediate: true })
       colorterm = (await $.env.get('COLORTERM')) || ''
       term = (await $.env.get('TERM')) || ''
       const theme = (await $.config.list()).find((row) => row.key === 'theme')?.value
@@ -1496,14 +1370,7 @@ export function register(on, options) {
       // The same text as the coda file; Claude Code shows command output as Markdown.
       return { text: codaMarkdown(state, ledgerPath()).replace(/^# Orchestra coda\n\n/, '') }
     }
-    // Reads the narration (or the coda) aloud now, whatever the voiceCoda option says.
-    if (arg === 'voice') {
-      if (!isPerformance(state) || !codaFile) return { text: 'No performance in this session yet, so there is no coda to speak.' }
-      const text = view.narration?.status === 'done' ? view.narration.text : spokenFrom(codaMarkdown(state, ledgerPath()))
-      spokenText = ''
-      speakCoda($, text, codaFile, epoch).catch((err) => warn($, 'voice', `could not speak the coda (${err instanceof Error ? err.message : String(err)})`))
-      return { text: `Speaking the ${view.narration?.status === 'done' ? 'narrated coda' : 'coda'} with voice ${voice.voiceId || '(none set)'} in "${voice.language}"; the MP3 goes beside the coda.` }
-    }
+    if (arg) return { text: `Unknown argument: ${arg}. Use coda, ledger or close.` }
     view.offset = 0
     await $.ui.open({ id: PANE, title: 'Orchestra', focus: true, closeOnEscape: true })
     return {}

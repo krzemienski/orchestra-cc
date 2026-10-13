@@ -6,42 +6,5 @@
   "homepage": "https://github.com/krzemienski/orchestra-cc",
   "repository": "https://github.com/krzemienski/orchestra-cc",
   "license": "MIT",
-  "keywords": ["subagents", "orchestration", "mod", "ledger", "provenance"],
-  "userConfig": {
-    "narrateCoda": {
-      "type": "boolean",
-      "title": "Narrate the coda",
-      "description": "When the conductor's turn ends with every part settled, Claude retells the coda as prose in a second file beside it. Each narration is one Claude call billed to your login, and needs `npm install` in the plugin's narrate folder.",
-      "required": false,
-      "default": false
-    },
-    "voiceCoda": {
-      "type": "boolean",
-      "title": "Speak the coda",
-      "description": "When the coda (or its narration) is ready, ElevenLabs reads it into an MP3 beside it. Needs ELEVENLABS_API_KEY in the environment Claude Code starts from, and a voice id. Each reading is billed to your ElevenLabs account.",
-      "required": false,
-      "default": false
-    },
-    "voiceId": {
-      "type": "string",
-      "title": "ElevenLabs voice id",
-      "description": "The voice that reads the coda. List voices verified for a language with: node <plugin>/narrate/voice.mjs --voices <language>",
-      "required": false,
-      "default": ""
-    },
-    "voiceLanguage": {
-      "type": "string",
-      "title": "Voice language",
-      "description": "ISO 639-1 code of the language the coda is read in (the coda and its narration are written in English: en). The voice must be verified for it.",
-      "required": false,
-      "default": "en"
-    },
-    "voiceModel": {
-      "type": "string",
-      "title": "ElevenLabs model",
-      "description": "Text-to-speech model id; empty means eleven_v4, which speaks the requested language. eleven_multilingual_v2 cannot enforce a language.",
-      "required": false,
-      "default": ""
-    }
-  }
+  "keywords": ["subagents", "orchestration", "mod", "ledger", "provenance"]
 }

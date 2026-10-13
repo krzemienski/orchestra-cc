@@ -3,7 +3,7 @@
 // and draws the ensemble on the surfaces a mod owns: a pane, the band above the prompt,
 // the status line, toasts, the spinner and the Agent tool rows.
 
-import { CONDUCTOR, instrumentDef, activity, apply, authorOf, closeLeftOpen, codaMarkdown, elapsed, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, lastCall, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
+import { CONDUCTOR, instrumentDef, activity, apply, rollup, authorOf, closeLeftOpen, codaMarkdown, elapsed, emptyState, wouldConflict, plural, whoOf, fold, instrumentOf, INSTRUMENTS, isPerformance, lastCall, latest, lineDelta, musicians, nameOf, statusLine } from './ledger.js'
 import { TABS, agentRows, band, heldWrite, outcomeLine, pane, scrollPane } from './views.js'
 import { colorMode, ground, modeFor, paint, setColorMode } from './palette.js'
 
@@ -428,7 +428,9 @@ let bandRows = Infinity
 function showStatus($) {
   if (!isPerformance(state)) return $.ui.status(undefined)
   const inBand = musicians(state).filter((m) => m.state !== 'done').length
-  $.ui.status(`${statusLine(state)}${bandRows < 1 && inBand ? ` · … ${inBand} more · /orchestra` : ''}`)
+  // The rollup's counts and the fold, short enough for a narrow terminal's one line.
+  if (bandRows < 1 && inBand) return $.ui.status(['Orchestra', ...rollup(state).map((x) => x.text), `… ${inBand} more · /orchestra`].join(' · '))
+  $.ui.status(statusLine(state))
 }
 
 // Toasts for what an event changed: stale reads, handoffs and failures.
@@ -1470,7 +1472,7 @@ export function register(on) {
     const el = $.ui.resolve(e)
     const ref = await next(e)
     const width = Math.max(40, e.viewport?.columns ?? 100)
-    const status = el.Text({ dimColor: true, wrap: 'truncate-end', children: [`𝄐 ${statusLine(state)}`] })
+    const status = el.Text({ dimColor: true, wrap: 'truncate-end', children: [`𝄐 Orchestra  ${rollup(state).map((x) => x.text).join(' · ')}`] })
     const held = view.held ? heldWrite(el, view.held, width, DIALOG_LINES_PER_SIDE) : []
     return el.Box({ flexDirection: 'column', children: [status, ...held, ref] })
   })

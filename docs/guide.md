@@ -210,7 +210,9 @@ Orchestra draws no animation and runs no frame timer. It redraws when the ledger
 Orchestra follows your terminal, not a palette of its own.
 
 - **The band, status line, spinner and toasts** paint no background. They sit on the terminal's own background, whatever it is.
-- **The pane** is the one exception. Claude Code fills a docked pane with its own grey (`#262626`). When your theme is known, Orchestra paints the pane body with the background its colours were measured on: black on a dark terminal, white on a light one. When it is not, Orchestra paints nothing.
+- **The pane** is the one exception. Claude Code fills a docked pane with its own grey (`#262626`), which no plugin can clear. Orchestra paints the pane body over it with the background its colours were measured on: black on a dark terminal, white on a light one. When it cannot name your theme, it asks Claude Code for the theme's own `inverseText` colour, which is that same black or white in your real theme.
+
+![The docked pane under the auto theme, painted the theme's own ground](screenshots/pane-auto-theme.png)
 - **Colours** are chosen for contrast, each at least 4.5:1 against that background. The lowest are 7.57 on black, 5.32 on white, and 5.77 for the exact 256-colour value sent (`node .planning/contracts/palette-proof.mjs`).
 
 Which colours you get depends on your Claude Code theme (`/theme`) and on what the terminal says it supports. Each row was captured live (step-56, step-57):
@@ -222,7 +224,7 @@ Which colours you get depends on your Claude Code theme (`/theme`) and on what t
 | `TERM` contains `256`, no truecolor | The nearest xterm-256 entry | Black | Trumpet `38;5;215`, ground `48;5;16` |
 | A terminal with neither (`TERM=xterm`) | Claude Code theme keys, drawn in 16 colours | Claude Code's own | `31 32 36 37 93 95`; no `38;` code |
 | An ANSI theme (`dark-ansi`, `light-ansi`) | Claude Code theme keys (`warning`, `success`, `error`, `planMode`, `suggestion`, `merged`), which the theme draws as 16-colour codes | Claude Code's own | `91 92 93 96 37`; no `38;5;` or `38;2;` code (fix2 run, step-45) |
-| A theme Orchestra cannot read or name (here `auto`) | Claude Code theme keys, drawn as your real theme draws them | Nothing painted by Orchestra. An inline pane has no background code at all (fix2 run, step-46); a docked pane keeps Claude Code's own fill, its theme's `composerSidebarBackground`, which no mod can clear ([anthropics/claude-code#100102](https://github.com/anthropics/claude-code/issues/100102)) | band and inline pane: no `48;` code |
+| A theme Orchestra cannot read or name (`auto`, `custom:<slug>`) | Claude Code theme keys, drawn as your real theme draws them, each at least 4.5:1 on black and on white | A docked pane: the theme key `inverseText`, which your theme resolves to black (dark) or white (light), so Claude Code's grey fill does not show. An inline pane: nothing | `auto`: `48;2;0;0;0`; light-based custom theme: `48;2;255;255;255`; inline: no `48;` code (pane-fill run, steps 02, 12, 23) |
 
 A change of theme is picked up within 2 seconds. To check what your terminal says, run `echo $COLORTERM $TERM`. tmux passes 256 colours or truecolor depending on its own settings, so a capture in tmux may not show what your terminal draws directly.
 

@@ -32,12 +32,12 @@ Orchestra returns to what it was approved to be: a picture of how agents relate,
 - A failed call by an engine loop toasted as a `Guest` failure.
 - Parts started together had no labelled Agent row: Claude Code draws several Agent calls from one message as one block a mod cannot draw into. The conductor now starts each background part in its own message.
 - Under an ANSI theme on a truecolor terminal, Orchestra's colour names were drawn as 24-bit colours. ANSI and unknown themes now use Claude Code theme keys, which an ANSI theme draws as 16-colour codes.
+- Under `auto` or a custom theme a docked pane showed Claude Code's grey fill. It is now painted the theme's `inverseText`, black or white as the theme resolves it.
 - At 100×20, while Claude Code lists running agents, the band gets no rows; the status line now carries the rollup and `… N more · /orchestra`, and the row above the conflict dialog is the band's rollup, short enough for 100 columns.
 
 ### Known limitations
 
 - Parts a person explicitly asks to start in one message share one Agent block that a mod cannot label.
-- A docked pane keeps Claude Code's own fill (`composerSidebarBackground`), which no mod can clear (anthropics/claude-code#100102).
 
 ## 0.1.7 and earlier
 

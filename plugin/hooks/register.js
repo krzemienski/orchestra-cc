@@ -404,12 +404,16 @@ async function recordIn(at, $, fields, quiet = false) {
   // Once the events are applied they stand. Telling the user about them must not undo a decision
   // the caller is about to act on, so a failed toast or redraw is only logged.
   try {
-    view.now = ts
     if (!quiet) toastNews($, before, applied)
     // Not awaited: waiting on the save chain would spend this hook's time budget.
     persist($).catch((err) => debug($, `Orchestra could not queue a save: ${err instanceof Error ? err.message : String(err)}`))
-    $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
-    $.ui.invalidate('ui.render')
+    // Loops outside the roster (Claude Code's own forks, another plugin's agents) are recorded but
+    // never drawn, so their events neither move the time Orchestra shows nor redraw it.
+    if (applied.some((x) => !x.agent || x.agent === CONDUCTOR || state.musicians[x.agent]?.assigned)) {
+      view.now = ts
+      $.ui.status(isPerformance(state) ? statusLine(state) : undefined)
+      $.ui.invalidate('ui.render')
+    }
   } catch (err) {
     debug($, `Orchestra could not show event ${event.seq}: ${err instanceof Error ? err.message : String(err)}`)
   }
